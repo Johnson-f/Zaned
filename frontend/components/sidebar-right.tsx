@@ -18,11 +18,6 @@ import {
 
 // This is sample data.
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
   calendars: [
     {
       name: "My Calendars",
@@ -49,7 +44,7 @@ export function SidebarRight({
       {...props}
     >
       <SidebarHeader className="border-sidebar-border h-16 border-b">
-        <NavUser user={data.user} />
+        <NavUser />
       </SidebarHeader>
       <SidebarContent>
         <DatePicker />
