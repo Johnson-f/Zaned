@@ -13,16 +13,12 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 
-export default function ProtectedLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function Page() {
   return (
-    <SidebarProvider className="flex flex-row">
+    <SidebarProvider>
       <SidebarLeft />
-      <SidebarInset className="flex flex-col min-w-0 flex-1">
-        <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b">
+      <SidebarInset>
+        <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2">
           <div className="flex flex-1 items-center gap-2 px-3">
             <SidebarTrigger />
             <Separator
@@ -40,11 +36,12 @@ export default function ProtectedLayout({
             </Breadcrumb>
           </div>
         </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
-          {children}
+        <div className="flex flex-1 flex-col gap-4 p-4">
+          <div className="bg-muted/50 mx-auto h-24 w-full max-w-3xl rounded-xl" />
+          <div className="bg-muted/50 mx-auto h-[100vh] w-full max-w-3xl rounded-xl" />
         </div>
       </SidebarInset>
       <SidebarRight />
     </SidebarProvider>
-  );
+  )
 }
