@@ -27,7 +27,7 @@ func main() {
 	log.Println("Database connection established")
 
 	// Run database migrations
-	if err := database.Migrate(&model.User{}, &model.Example{}); err != nil {
+	if err := database.Migrate(&model.Screener{}); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 	log.Println("Database migrations completed")

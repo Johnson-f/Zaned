@@ -10,7 +10,7 @@ import (
 // SetupRoutes configures all routes for the application
 func SetupRoutes(app *fiber.App) {
 	// Initialize services
-	exampleService := service.NewExampleService()
+	screenerService := service.NewScreenerService()
 
 	// Public routes
 	public := app.Group("/api")
@@ -29,20 +29,34 @@ func SetupRoutes(app *fiber.App) {
 	// Apply JWT middleware to all protected routes
 	protected.Use(supabase.JWTAuthMiddleware())
 	{
-		// Example protected route that uses user ID from context
-		protected.Get("/user-data", func(c *fiber.Ctx) error {
-			// Get user ID from context (set by JWT middleware)
-			userID := c.Locals("userID").(string)
-
-			// Use service to get user data
-			data, err := exampleService.GetUserData(userID)
+		// Get all screener data (read-only)
+		protected.Get("/screener", func(c *fiber.Ctx) error {
+			screeners, err := screenerService.GetAllScreeners()
 			if err != nil {
-				// Check if it's a "record not found" error
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    screeners,
+			})
+		})
+
+		// Get screener by ID
+		protected.Get("/screener/:id", func(c *fiber.Ctx) error {
+			id := c.Params("id")
+
+			screener, err := screenerService.GetScreenerByID(id)
+			if err != nil {
 				if err.Error() == "record not found" {
 					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 						"success": false,
 						"error":   "Not Found",
-						"message": "No data found for this user",
+						"message": "Screener record not found",
 					})
 				}
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -54,17 +68,25 @@ func SetupRoutes(app *fiber.App) {
 
 			return c.JSON(fiber.Map{
 				"success": true,
-				"data":    data,
+				"data":    screener,
 			})
 		})
 
-		// Get all examples for the authenticated user
-		protected.Get("/examples", func(c *fiber.Ctx) error {
-			userID := c.Locals("userID").(string)
+		// Get screener by symbol
+		protected.Get("/screener/symbol/:symbol", func(c *fiber.Ctx) error {
+			symbol := c.Params("symbol")
 
-			examples, err := exampleService.GetUserExamples(userID)
+			screener, err := screenerService.GetScreenerBySymbol(symbol)
 			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Screener record not found for symbol",
+					})
+				}
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
 					"error":   "Internal Server Error",
 					"message": err.Error(),
 				})
@@ -72,72 +94,8 @@ func SetupRoutes(app *fiber.App) {
 
 			return c.JSON(fiber.Map{
 				"success": true,
-				"data":    examples,
-			})
-		})
-
-		// Create a new example for the authenticated user
-		protected.Post("/examples", func(c *fiber.Ctx) error {
-			userID := c.Locals("userID").(string)
-
-			var body map[string]string
-			if err := c.BodyParser(&body); err != nil {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error":   "Bad Request",
-					"message": "Invalid request body",
-				})
-			}
-
-			content := body["content"]
-			if content == "" {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error":   "Bad Request",
-					"message": "content field is required",
-				})
-			}
-
-			example, err := exampleService.CreateUserData(userID, content)
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-				"success": true,
-				"data":    example,
-			})
-		})
-
-		// Example POST route
-		protected.Post("/process", func(c *fiber.Ctx) error {
-			// Get user ID from context
-			userID := c.Locals("userID").(string)
-
-			// Parse request body
-			var body map[string]string
-			if err := c.BodyParser(&body); err != nil {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error":   "Bad Request",
-					"message": "Invalid request body",
-				})
-			}
-
-			// Process the request
-			data := body["data"]
-			if err := exampleService.ProcessUserRequest(userID, data); err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"message": "Request processed successfully",
+				"data":    screener,
 			})
 		})
 	}
 }
-
