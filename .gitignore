@@ -35,10 +35,6 @@ out/
 *.out
 go.work
 
-# Cursor AI files
-.cursor/
-.plans/
-
 # Database
 *.db
 *.sqlite

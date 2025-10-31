@@ -30,7 +30,7 @@ screener/
 
 ## Prerequisites
 
-- Node.js 18+ and npm/yarn/pnpm
+- Bun (latest version)
 - Go 1.21+
 - Supabase account and project
 
@@ -45,11 +45,7 @@ cd frontend
 
 2. Install dependencies:
 ```bash
-npm install
-# or
-yarn install
-# or
-pnpm install
+bun install
 ```
 
 3. Copy `.env.example` to `.env.local` and fill in your Supabase credentials:
@@ -65,10 +61,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
 5. Run the development server:
 ```bash
-npm run dev
+bun run dev
 ```
 
-The frontend will be available at `http://localhost:3000`
+The frontend will be available at `http://localhost:2000`
 
 ### Backend Setup
 
@@ -143,7 +139,7 @@ The backend uses GORM for database operations. Models are defined in `backend/mo
 Terminal 1 - Frontend:
 ```bash
 cd frontend
-npm run dev
+bun run dev
 ```
 
 Terminal 2 - Backend:
