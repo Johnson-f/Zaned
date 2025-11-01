@@ -10,7 +10,7 @@ import (
 // Screener represents stock market data in the system
 type Screener struct {
 	ID        uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Symbol    string         `gorm:"type:varchar(20);not null;index" json:"symbol"`
+	Symbol    string         `gorm:"type:varchar(20);not null;uniqueIndex" json:"symbol"`
 	Open      float64        `gorm:"type:decimal(15,4);not null" json:"open"`
 	High      float64        `gorm:"type:decimal(15,4);not null" json:"high"`
 	Low       float64        `gorm:"type:decimal(15,4);not null" json:"low"`
