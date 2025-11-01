@@ -25,6 +25,24 @@ export const API_ENDPOINTS = {
     COUNT: `${API_BASE_URL}/api/protected/screener/count`,
     SYMBOLS: `${API_BASE_URL}/api/protected/screener/symbols`,
   },
+  HISTORICAL: {
+    BASE: `${API_BASE_URL}/api/protected/historical`,
+    BY_ID: (id: string) => `${API_BASE_URL}/api/protected/historical/${id}`,
+    BY_SYMBOL: (symbol: string) =>
+      `${API_BASE_URL}/api/protected/historical/symbol/${symbol}`,
+    BY_SYMBOL_AND_PARAMS: (symbol: string, range: string, interval: string) =>
+      `${API_BASE_URL}/api/protected/historical/symbol/${symbol}/params?range=${range}&interval=${interval}`,
+    FILTER: `${API_BASE_URL}/api/protected/historical/filter`,
+    COUNT: `${API_BASE_URL}/api/protected/historical/count`,
+    COUNT_BY_SYMBOL: (symbol: string) =>
+      `${API_BASE_URL}/api/protected/historical/count/${symbol}`,
+    VOLUME_METRICS: `${API_BASE_URL}/api/protected/historical/volume-metrics`,
+    BATCH: `${API_BASE_URL}/api/protected/historical/batch`,
+    DELETE_BY_SYMBOL: (symbol: string) =>
+      `${API_BASE_URL}/api/protected/historical/symbol/${symbol}`,
+    DELETE_BY_SYMBOL_AND_PARAMS: (symbol: string, range: string, interval: string) =>
+      `${API_BASE_URL}/api/protected/historical/symbol/${symbol}/params?range=${range}&interval=${interval}`,
+  },
 } as const;
 
 /**

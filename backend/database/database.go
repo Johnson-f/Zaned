@@ -112,28 +112,22 @@ func getCurrentSchemaVersion() (string, error) {
 		return "", fmt.Errorf("database connection not initialized")
 	}
 
-	// Get underlying sql.DB to avoid prepared statement conflicts
-	sqlDB, err := DB.DB()
-	if err != nil {
-		return "", fmt.Errorf("failed to get underlying sql.DB: %w", err)
-	}
-
 	var version SchemaVersion
-	// Use direct sql.DB QueryRow to completely avoid prepared statements
-	row := sqlDB.QueryRow(`
+	// Use GORM Raw to avoid prepared statement conflicts
+	// Raw respects PrepareStmt: false setting
+	result := DB.Raw(`
 		SELECT id, version, description, created_at 
 		FROM schema_versions 
 		ORDER BY created_at DESC 
 		LIMIT 1
-	`)
+	`).Scan(&version)
 
-	err = row.Scan(&version.ID, &version.Version, &version.Description, &version.CreatedAt)
-	if err != nil {
+	if result.Error != nil {
 		// Check if it's a "no rows" error
-		if err.Error() == "sql: no rows in result set" || errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return "", nil // No version found, return empty string
 		}
-		return "", fmt.Errorf("failed to get schema version: %w", err)
+		return "", fmt.Errorf("failed to get schema version: %w", result.Error)
 	}
 
 	// Check if we got a result (version.ID will be 0 if no record found)
@@ -150,20 +144,14 @@ func updateSchemaVersion(version, description string) error {
 		return fmt.Errorf("database connection not initialized")
 	}
 
-	// Get underlying sql.DB to avoid prepared statement conflicts
-	sqlDB, err := DB.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get underlying sql.DB: %w", err)
-	}
-
-	// Use direct sql.DB Exec to completely avoid prepared statements
-	_, err = sqlDB.Exec(`
+	// Use GORM Exec to avoid prepared statement conflicts
+	result := DB.Exec(`
 		INSERT INTO schema_versions (version, description, created_at)
-		VALUES ($1, $2, $3)
+		VALUES (?, ?, ?)
 		ON CONFLICT (version) DO NOTHING
 	`, version, description, time.Now())
-	if err != nil {
-		return fmt.Errorf("failed to update schema version: %w", err)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update schema version: %w", result.Error)
 	}
 
 	return nil
@@ -175,22 +163,17 @@ func tableExists(tableName string) (bool, error) {
 		return false, fmt.Errorf("database connection not initialized")
 	}
 
-	// Get underlying sql.DB to avoid prepared statement conflicts
-	sqlDB, err := DB.DB()
-	if err != nil {
-		return false, fmt.Errorf("failed to get underlying sql.DB: %w", err)
-	}
-
 	var count int64
-	err = sqlDB.QueryRow(`
+	// Use GORM Raw to avoid prepared statement conflicts
+	result := DB.Raw(`
 		SELECT COUNT(*) 
 		FROM information_schema.tables 
 		WHERE table_schema = 'public' 
-		AND table_name = $1
+		AND table_name = ?
 	`, tableName).Scan(&count)
 
-	if err != nil {
-		return false, fmt.Errorf("failed to check table existence: %w", err)
+	if result.Error != nil {
+		return false, fmt.Errorf("failed to check table existence: %w", result.Error)
 	}
 
 	return count > 0, nil
@@ -202,23 +185,18 @@ func columnExists(tableName, columnName string) (bool, error) {
 		return false, fmt.Errorf("database connection not initialized")
 	}
 
-	// Get underlying sql.DB to avoid prepared statement conflicts
-	sqlDB, err := DB.DB()
-	if err != nil {
-		return false, fmt.Errorf("failed to get underlying sql.DB: %w", err)
-	}
-
 	var count int64
-	err = sqlDB.QueryRow(`
+	// Use GORM Raw to avoid prepared statement conflicts
+	result := DB.Raw(`
 		SELECT COUNT(*) 
 		FROM information_schema.columns 
 		WHERE table_schema = 'public' 
-		AND table_name = $1 
-		AND column_name = $2
+		AND table_name = ? 
+		AND column_name = ?
 	`, tableName, columnName).Scan(&count)
 
-	if err != nil {
-		return false, fmt.Errorf("failed to check column existence: %w", err)
+	if result.Error != nil {
+		return false, fmt.Errorf("failed to check column existence: %w", result.Error)
 	}
 
 	return count > 0, nil
@@ -230,13 +208,9 @@ func getCurrentTables() ([]string, error) {
 		return nil, fmt.Errorf("database connection not initialized")
 	}
 
-	// Get underlying sql.DB to avoid prepared statement conflicts
-	sqlDB, err := DB.DB()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
-	}
-
-	rows, err := sqlDB.Query(`
+	var tables []string
+	// Use GORM Raw to avoid prepared statement conflicts
+	result := DB.Raw(`
 		SELECT table_name 
 		FROM information_schema.tables 
 		WHERE table_schema = 'public' 
@@ -244,23 +218,10 @@ func getCurrentTables() ([]string, error) {
 		AND table_name NOT LIKE 'pg_%'
 		AND table_name NOT LIKE '_%'
 		ORDER BY table_name
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current tables: %w", err)
-	}
-	defer rows.Close()
+	`).Scan(&tables)
 
-	var tables []string
-	for rows.Next() {
-		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
-			return nil, fmt.Errorf("failed to scan table name: %w", err)
-		}
-		tables = append(tables, tableName)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating table rows: %w", err)
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get current tables: %w", result.Error)
 	}
 
 	return tables, nil
@@ -322,6 +283,8 @@ func Migrate(models ...interface{}) error {
 
 	// Track if we're migrating the screener table
 	var stocksMigrated bool
+	// Track if we're migrating the historical table
+	var historicalMigrated bool
 
 	// Perform migrations for each model
 	for _, model := range models {
@@ -337,6 +300,11 @@ func Migrate(models ...interface{}) error {
 		// Check if this is the screener table
 		if tableName == "screener" {
 			stocksMigrated = true
+		}
+
+		// Check if this is the historical table
+		if tableName == "historical" {
+			historicalMigrated = true
 		}
 
 		// Check if table exists before migration
@@ -392,6 +360,14 @@ func Migrate(models ...interface{}) error {
 	if stocksMigrated {
 		if err := setupScreenerPolicies(); err != nil {
 			log.Printf("Warning: Failed to setup screener policies: %v", err)
+			// Don't fail migration if policy setup fails, but log it
+		}
+	}
+
+	// Apply RLS policies for historical table if it was migrated
+	if historicalMigrated {
+		if err := setupHistoricalPolicies(); err != nil {
+			log.Printf("Warning: Failed to setup historical policies: %v", err)
 			// Don't fail migration if policy setup fails, but log it
 		}
 	}
@@ -478,6 +454,58 @@ func setupScreenerPolicies() error {
 	}
 
 	log.Println("Successfully configured RLS policies and Realtime for screener table")
+	return nil
+}
+
+// setupHistoricalPolicies sets up RLS policies for the historical table
+func setupHistoricalPolicies() error {
+	if DB == nil {
+		return fmt.Errorf("database connection not initialized")
+	}
+
+	// Enable Row Level Security on historical table
+	if err := DB.Exec(`ALTER TABLE IF EXISTS historical ENABLE ROW LEVEL SECURITY`).Error; err != nil {
+		return fmt.Errorf("failed to enable RLS on historical table: %w", err)
+	}
+
+	// Revoke all privileges from anon and authenticated roles
+	// This ensures users can't insert, update, or delete
+	if err := DB.Exec(`REVOKE ALL ON TABLE historical FROM anon, authenticated`).Error; err != nil {
+		// Log but don't fail - this might error if privileges don't exist
+		log.Printf("Note: Could not revoke privileges (may not exist): %v", err)
+	}
+
+	// Grant SELECT permission to authenticated users (read-only access)
+	if err := DB.Exec(`GRANT SELECT ON TABLE historical TO authenticated`).Error; err != nil {
+		return fmt.Errorf("failed to grant SELECT permission: %w", err)
+	}
+
+	// Drop existing policy if it exists, then create new read-only policy
+	// Using IF EXISTS to avoid errors if policy doesn't exist
+	if err := DB.Exec(`
+		DROP POLICY IF EXISTS "Allow read access to authenticated users" ON historical
+	`).Error; err != nil {
+		log.Printf("Note: Could not drop existing policy: %v", err)
+	}
+
+	// Create read-only policy for authenticated users
+	if err := DB.Exec(`
+		CREATE POLICY "Allow read access to authenticated users"
+		ON historical
+		FOR SELECT
+		TO authenticated
+		USING (true)
+	`).Error; err != nil {
+		return fmt.Errorf("failed to create read-only policy: %w", err)
+	}
+
+	// Note: INSERT, UPDATE, and DELETE are automatically denied because:
+	// 1. REVOKE ALL removes all privileges from anon and authenticated roles
+	// 2. GRANT SELECT only grants SELECT privilege (not INSERT/UPDATE/DELETE)
+	// 3. Only a SELECT policy exists (no policies for INSERT/UPDATE/DELETE)
+	// In PostgreSQL RLS, if no policy exists for an operation, it's denied by default
+
+	log.Println("Successfully configured RLS policies for historical table")
 	return nil
 }
 
