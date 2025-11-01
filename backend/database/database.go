@@ -112,20 +112,28 @@ func getCurrentSchemaVersion() (string, error) {
 		return "", fmt.Errorf("database connection not initialized")
 	}
 
+	// Get underlying sql.DB to avoid prepared statement conflicts
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return "", fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
 	var version SchemaVersion
-	// Use Raw query to avoid prepared statement conflicts
-	result := DB.Raw(`
+	// Use direct sql.DB QueryRow to completely avoid prepared statements
+	row := sqlDB.QueryRow(`
 		SELECT id, version, description, created_at 
 		FROM schema_versions 
 		ORDER BY created_at DESC 
 		LIMIT 1
-	`).Scan(&version)
+	`)
 
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	err = row.Scan(&version.ID, &version.Version, &version.Description, &version.CreatedAt)
+	if err != nil {
+		// Check if it's a "no rows" error
+		if err.Error() == "sql: no rows in result set" || errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", nil // No version found, return empty string
 		}
-		return "", fmt.Errorf("failed to get schema version: %w", result.Error)
+		return "", fmt.Errorf("failed to get schema version: %w", err)
 	}
 
 	// Check if we got a result (version.ID will be 0 if no record found)
@@ -142,19 +150,19 @@ func updateSchemaVersion(version, description string) error {
 		return fmt.Errorf("database connection not initialized")
 	}
 
-	schemaVersion := SchemaVersion{
-		Version:     version,
-		Description: description,
-		CreatedAt:   time.Now(),
+	// Get underlying sql.DB to avoid prepared statement conflicts
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying sql.DB: %w", err)
 	}
 
-	// Use INSERT ... ON CONFLICT DO NOTHING to avoid duplicates
-	// PostgreSQL uses $1, $2, $3 for parameter placeholders
-	if err := DB.Exec(`
+	// Use direct sql.DB Exec to completely avoid prepared statements
+	_, err = sqlDB.Exec(`
 		INSERT INTO schema_versions (version, description, created_at)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (version) DO NOTHING
-	`, schemaVersion.Version, schemaVersion.Description, schemaVersion.CreatedAt).Error; err != nil {
+	`, version, description, time.Now())
+	if err != nil {
 		return fmt.Errorf("failed to update schema version: %w", err)
 	}
 
@@ -167,13 +175,19 @@ func tableExists(tableName string) (bool, error) {
 		return false, fmt.Errorf("database connection not initialized")
 	}
 
+	// Get underlying sql.DB to avoid prepared statement conflicts
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return false, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
 	var count int64
-	err := DB.Raw(`
+	err = sqlDB.QueryRow(`
 		SELECT COUNT(*) 
 		FROM information_schema.tables 
 		WHERE table_schema = 'public' 
 		AND table_name = $1
-	`, tableName).Scan(&count).Error
+	`, tableName).Scan(&count)
 
 	if err != nil {
 		return false, fmt.Errorf("failed to check table existence: %w", err)
@@ -188,14 +202,20 @@ func columnExists(tableName, columnName string) (bool, error) {
 		return false, fmt.Errorf("database connection not initialized")
 	}
 
+	// Get underlying sql.DB to avoid prepared statement conflicts
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return false, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
 	var count int64
-	err := DB.Raw(`
+	err = sqlDB.QueryRow(`
 		SELECT COUNT(*) 
 		FROM information_schema.columns 
 		WHERE table_schema = 'public' 
 		AND table_name = $1 
 		AND column_name = $2
-	`, tableName, columnName).Scan(&count).Error
+	`, tableName, columnName).Scan(&count)
 
 	if err != nil {
 		return false, fmt.Errorf("failed to check column existence: %w", err)
@@ -210,8 +230,13 @@ func getCurrentTables() ([]string, error) {
 		return nil, fmt.Errorf("database connection not initialized")
 	}
 
-	var tables []string
-	err := DB.Raw(`
+	// Get underlying sql.DB to avoid prepared statement conflicts
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	rows, err := sqlDB.Query(`
 		SELECT table_name 
 		FROM information_schema.tables 
 		WHERE table_schema = 'public' 
@@ -219,10 +244,23 @@ func getCurrentTables() ([]string, error) {
 		AND table_name NOT LIKE 'pg_%'
 		AND table_name NOT LIKE '_%'
 		ORDER BY table_name
-	`).Scan(&tables).Error
-
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current tables: %w", err)
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var tableName string
+		if err := rows.Scan(&tableName); err != nil {
+			return nil, fmt.Errorf("failed to scan table name: %w", err)
+		}
+		tables = append(tables, tableName)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating table rows: %w", err)
 	}
 
 	return tables, nil

@@ -47,58 +47,6 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
-		// Get screener by ID
-		protected.Get("/screener/:id", func(c *fiber.Ctx) error {
-			id := c.Params("id")
-
-			screener, err := screenerService.GetScreenerByID(id)
-			if err != nil {
-				if err.Error() == "record not found" {
-					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-						"success": false,
-						"error":   "Not Found",
-						"message": "Screener record not found",
-					})
-				}
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data":    screener,
-			})
-		})
-
-		// Get screener by symbol
-		protected.Get("/screener/symbol/:symbol", func(c *fiber.Ctx) error {
-			symbol := c.Params("symbol")
-
-			screener, err := screenerService.GetScreenerBySymbol(symbol)
-			if err != nil {
-				if err.Error() == "record not found" {
-					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-						"success": false,
-						"error":   "Not Found",
-						"message": "Screener record not found for symbol",
-					})
-				}
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data":    screener,
-			})
-		})
-
 		// Get screeners with advanced filtering, sorting, and pagination
 		protected.Get("/screener/filter", func(c *fiber.Ctx) error {
 			// Parse filter options from query parameters
@@ -207,7 +155,62 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
-		// Search screeners by symbol
+		// Get top gainers (must come before /:id route)
+		protected.Get("/screener/top-gainers", func(c *fiber.Ctx) error {
+			limit, _ := strconv.Atoi(c.Query("limit", "10"))
+			screeners, err := screenerService.GetTopGainers(limit)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    screeners,
+			})
+		})
+
+		// Get most active stocks (must come before /:id route)
+		protected.Get("/screener/most-active", func(c *fiber.Ctx) error {
+			limit, _ := strconv.Atoi(c.Query("limit", "10"))
+			screeners, err := screenerService.GetMostActive(limit)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    screeners,
+			})
+		})
+
+		// Get total count of screeners (must come before /:id route)
+		protected.Get("/screener/count", func(c *fiber.Ctx) error {
+			count, err := screenerService.GetCount()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"count": count,
+				},
+			})
+		})
+
+		// Search screeners by symbol (must come before /:id route)
 		protected.Get("/screener/search", func(c *fiber.Ctx) error {
 			searchTerm := c.Query("q")
 			if searchTerm == "" {
@@ -234,7 +237,7 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
-		// Get screeners by price range
+		// Get screeners by price range (must come before /:id route)
 		protected.Get("/screener/price-range", func(c *fiber.Ctx) error {
 			minPrice, err := strconv.ParseFloat(c.Query("min"), 64)
 			if err != nil {
@@ -269,7 +272,7 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
-		// Get screeners by volume range
+		// Get screeners by volume range (must come before /:id route)
 		protected.Get("/screener/volume-range", func(c *fiber.Ctx) error {
 			minVolume, err := strconv.ParseInt(c.Query("min"), 10, 64)
 			if err != nil {
@@ -304,11 +307,19 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
-		// Get top gainers
-		protected.Get("/screener/top-gainers", func(c *fiber.Ctx) error {
-			limit, _ := strconv.Atoi(c.Query("limit", "10"))
-			screeners, err := screenerService.GetTopGainers(limit)
+		// Get screener by symbol (must come before /:id route)
+		protected.Get("/screener/symbol/:symbol", func(c *fiber.Ctx) error {
+			symbol := c.Params("symbol")
+
+			screener, err := screenerService.GetScreenerBySymbol(symbol)
 			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Screener record not found for symbol",
+					})
+				}
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
 					"error":   "Internal Server Error",
@@ -318,15 +329,23 @@ func SetupRoutes(app *fiber.App) {
 
 			return c.JSON(fiber.Map{
 				"success": true,
-				"data":    screeners,
+				"data":    screener,
 			})
 		})
 
-		// Get most active stocks
-		protected.Get("/screener/most-active", func(c *fiber.Ctx) error {
-			limit, _ := strconv.Atoi(c.Query("limit", "10"))
-			screeners, err := screenerService.GetMostActive(limit)
+		// Get screener by ID (must be last to avoid matching specific routes)
+		protected.Get("/screener/:id", func(c *fiber.Ctx) error {
+			id := c.Params("id")
+
+			screener, err := screenerService.GetScreenerByID(id)
 			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Screener record not found",
+					})
+				}
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
 					"error":   "Internal Server Error",
@@ -336,26 +355,7 @@ func SetupRoutes(app *fiber.App) {
 
 			return c.JSON(fiber.Map{
 				"success": true,
-				"data":    screeners,
-			})
-		})
-
-		// Get total count of screeners
-		protected.Get("/screener/count", func(c *fiber.Ctx) error {
-			count, err := screenerService.GetCount()
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data": fiber.Map{
-					"count": count,
-				},
+				"data":    screener,
 			})
 		})
 
