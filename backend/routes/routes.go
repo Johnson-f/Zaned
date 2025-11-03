@@ -50,6 +50,86 @@ func SetupRoutes(app *fiber.App) {
 				"accepted_at": time.Now().UTC().Format(time.RFC3339),
 			})
 		})
+
+		// Inside day screener (public) - DAILY bars only (interval=1d)
+		public.Get("/inside-day", func(c *fiber.Ctx) error {
+			symbols, err := historicalService.GetSymbolsWithDailyInsideDay()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbols": symbols,
+					"count":   len(symbols),
+				},
+			})
+		})
+
+		// Highest volume in last 90 days (public) - DAILY bars only
+		public.Get("/high-volume-quarter", func(c *fiber.Ctx) error {
+			symbols, err := historicalService.GetSymbolsWithHighestVolumeInQuarter()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbols": symbols,
+					"count":   len(symbols),
+				},
+			})
+		})
+
+		// Highest volume in last 365 days (public) - DAILY bars only
+		public.Get("/high-volume-year", func(c *fiber.Ctx) error {
+			symbols, err := historicalService.GetSymbolsWithHighestVolumeInYear()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbols": symbols,
+					"count":   len(symbols),
+				},
+			})
+		})
+
+		// Highest volume ever (public) - DAILY bars only
+		public.Get("/high-volume-ever", func(c *fiber.Ctx) error {
+			symbols, err := historicalService.GetSymbolsWithHighestVolumeEver()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbols": symbols,
+					"count":   len(symbols),
+				},
+			})
+		})
 	}
 
 	// Protected routes (require JWT authentication)
@@ -442,226 +522,17 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
-		// Get historical records with filters, sorting, and pagination
-		protected.Get("/historical/filter", func(c *fiber.Ctx) error {
-			var filters *service.HistoricalFilterOptions
-			if c.Query("symbol") != "" || c.Query("min_epoch") != "" || c.Query("max_epoch") != "" ||
-				c.Query("range") != "" || c.Query("interval") != "" ||
-				c.Query("min_open") != "" || c.Query("max_open") != "" ||
-				c.Query("min_high") != "" || c.Query("max_high") != "" ||
-				c.Query("min_low") != "" || c.Query("max_low") != "" ||
-				c.Query("min_close") != "" || c.Query("max_close") != "" ||
-				c.Query("min_volume") != "" || c.Query("max_volume") != "" {
-				filters = &service.HistoricalFilterOptions{}
-				if val := c.Query("symbol"); val != "" {
-					filters.Symbol = &val
-				}
-				if val := c.Query("min_epoch"); val != "" {
-					if epoch, err := strconv.ParseInt(val, 10, 64); err == nil {
-						filters.MinEpoch = &epoch
-					}
-				}
-				if val := c.Query("max_epoch"); val != "" {
-					if epoch, err := strconv.ParseInt(val, 10, 64); err == nil {
-						filters.MaxEpoch = &epoch
-					}
-				}
-				if val := c.Query("range"); val != "" {
-					filters.Range = &val
-				}
-				if val := c.Query("interval"); val != "" {
-					filters.Interval = &val
-				}
-				if val := c.Query("min_open"); val != "" {
-					if open, err := strconv.ParseFloat(val, 64); err == nil {
-						filters.MinOpen = &open
-					}
-				}
-				if val := c.Query("max_open"); val != "" {
-					if open, err := strconv.ParseFloat(val, 64); err == nil {
-						filters.MaxOpen = &open
-					}
-				}
-				if val := c.Query("min_high"); val != "" {
-					if high, err := strconv.ParseFloat(val, 64); err == nil {
-						filters.MinHigh = &high
-					}
-				}
-				if val := c.Query("max_high"); val != "" {
-					if high, err := strconv.ParseFloat(val, 64); err == nil {
-						filters.MaxHigh = &high
-					}
-				}
-				if val := c.Query("min_low"); val != "" {
-					if low, err := strconv.ParseFloat(val, 64); err == nil {
-						filters.MinLow = &low
-					}
-				}
-				if val := c.Query("max_low"); val != "" {
-					if low, err := strconv.ParseFloat(val, 64); err == nil {
-						filters.MaxLow = &low
-					}
-				}
-				if val := c.Query("min_close"); val != "" {
-					if close, err := strconv.ParseFloat(val, 64); err == nil {
-						filters.MinClose = &close
-					}
-				}
-				if val := c.Query("max_close"); val != "" {
-					if close, err := strconv.ParseFloat(val, 64); err == nil {
-						filters.MaxClose = &close
-					}
-				}
-				if val := c.Query("min_volume"); val != "" {
-					if volume, err := strconv.ParseInt(val, 10, 64); err == nil {
-						filters.MinVolume = &volume
-					}
-				}
-				if val := c.Query("max_volume"); val != "" {
-					if volume, err := strconv.ParseInt(val, 10, 64); err == nil {
-						filters.MaxVolume = &volume
-					}
-				}
-			}
+		// Removed historical/filter route
 
-			// Parse sort options
-			var sort *service.HistoricalSortOptions
-			if c.Query("sort_field") != "" {
-				sort = &service.HistoricalSortOptions{
-					Field:     c.Query("sort_field"),
-					Direction: c.Query("sort_direction", "asc"),
-				}
-			}
+		// Removed historical/count route
 
-			// Parse pagination options
-			var pagination *service.HistoricalPaginationOptions
-			page, _ := strconv.Atoi(c.Query("page", "1"))
-			limit, _ := strconv.Atoi(c.Query("limit", "10"))
-			if page > 0 || limit > 0 {
-				pagination = &service.HistoricalPaginationOptions{
-					Page:  page,
-					Limit: limit,
-				}
-			}
+		// Removed historical/count/:symbol route
 
-			result, err := historicalService.GetHistoricalWithFilters(filters, sort, pagination)
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
+		// Removed historical/symbol/:symbol/params route
 
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data":    result,
-			})
-		})
+		// Removed historical/symbol/:symbol route
 
-		// Get historical count
-		protected.Get("/historical/count", func(c *fiber.Ctx) error {
-			count, err := historicalService.GetCount()
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data": fiber.Map{
-					"count": count,
-				},
-			})
-		})
-
-		// Get historical count by symbol
-		protected.Get("/historical/count/:symbol", func(c *fiber.Ctx) error {
-			symbol := c.Params("symbol")
-			count, err := historicalService.GetCountBySymbol(symbol)
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data": fiber.Map{
-					"symbol": symbol,
-					"count":  count,
-				},
-			})
-		})
-
-		// Get historical by symbol and params (range & interval)
-		protected.Get("/historical/symbol/:symbol/params", func(c *fiber.Ctx) error {
-			symbol := c.Params("symbol")
-			rangeParam := c.Query("range")
-			interval := c.Query("interval")
-
-			if rangeParam == "" || interval == "" {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"success": false,
-					"error":   "Bad Request",
-					"message": "range and interval query parameters are required",
-				})
-			}
-
-			historical, err := historicalService.GetHistoricalBySymbolAndParams(symbol, rangeParam, interval)
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data":    historical,
-			})
-		})
-
-		// Get historical by symbol
-		protected.Get("/historical/symbol/:symbol", func(c *fiber.Ctx) error {
-			symbol := c.Params("symbol")
-			historical, err := historicalService.GetHistoricalBySymbol(symbol)
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data":    historical,
-			})
-		})
-
-		// Get stocks volume metrics
-		protected.Get("/historical/volume-metrics", func(c *fiber.Ctx) error {
-			metrics, err := historicalService.GetStocksVolumeMetrics()
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data":    metrics,
-			})
-		})
+		// Removed historical/volume-metrics route
 
 		// Create historical record
 		protected.Post("/historical", func(c *fiber.Ctx) error {
@@ -798,74 +669,11 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
-		// Delete historical record by ID
-		protected.Delete("/historical/:id", func(c *fiber.Ctx) error {
-			id := c.Params("id")
-			if err := historicalService.DeleteHistorical(id); err != nil {
-				if err.Error() == "record not found" {
-					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-						"success": false,
-						"error":   "Not Found",
-						"message": "Historical record not found",
-					})
-				}
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
+		// Removed DELETE /historical/:id
 
-			return c.JSON(fiber.Map{
-				"success": true,
-				"message": "Historical record deleted successfully",
-			})
-		})
+		// Removed DELETE /historical/symbol/:symbol/params
 
-		// Delete historical records by symbol and params
-		protected.Delete("/historical/symbol/:symbol/params", func(c *fiber.Ctx) error {
-			symbol := c.Params("symbol")
-			rangeParam := c.Query("range")
-			interval := c.Query("interval")
-
-			if rangeParam == "" || interval == "" {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"success": false,
-					"error":   "Bad Request",
-					"message": "range and interval query parameters are required",
-				})
-			}
-
-			if err := historicalService.DeleteHistoricalBySymbolAndParams(symbol, rangeParam, interval); err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"message": "Historical records deleted successfully",
-			})
-		})
-
-		// Delete historical records by symbol
-		protected.Delete("/historical/symbol/:symbol", func(c *fiber.Ctx) error {
-			symbol := c.Params("symbol")
-			if err := historicalService.DeleteHistoricalBySymbol(symbol); err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"message": "Historical records deleted successfully",
-			})
-		})
+		// Removed DELETE /historical/symbol/:symbol
 
 		// Get historical record by ID (must be last to avoid matching specific routes)
 		protected.Get("/historical/:id", func(c *fiber.Ctx) error {

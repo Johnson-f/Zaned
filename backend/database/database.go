@@ -43,6 +43,10 @@ func InitDB() error {
 	// Add/update connection parameters for better compatibility
 	query.Set("sslmode", "require")
 	query.Set("connect_timeout", "10")
+	// Avoid server-side prepared statements (PgBouncer transaction pooling compatibility)
+	query.Set("prefer_simple_protocol", "true")
+	query.Set("statement_cache_capacity", "0")
+	query.Set("default_query_exec_mode", "simple_protocol")
 
 	// Reconstruct URL with updated query parameters
 	parsedURL.RawQuery = query.Encode()

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-    "gorm.io/gorm/clause"
+	"gorm.io/gorm/clause"
 )
 
 // HistoricalService contains business logic for historical price operations
@@ -16,52 +16,185 @@ type HistoricalService struct {
 	db *gorm.DB
 }
 
-// HistoricalFilterOptions represents filtering options for historical queries
-type HistoricalFilterOptions struct {
-	Symbol    *string
-	MinEpoch  *int64
-	MaxEpoch  *int64
-	Range     *string
-	Interval  *string
-	MinOpen   *float64
-	MaxOpen   *float64
-	MinHigh   *float64
-	MaxHigh   *float64
-	MinLow    *float64
-	MaxLow    *float64
-	MinClose  *float64
-	MaxClose  *float64
-	MinVolume *int64
-	MaxVolume *int64
+// IndicatorLookbacks controls window sizes for indicator calculations
+type IndicatorLookbacks struct {
+	ATR       int // e.g., 14
+	ADR       int // e.g., 14
+	VolumeSMA int // e.g., 50
+	MA        int // e.g., 50
 }
 
-// HistoricalSortOptions represents sorting options for historical queries
-type HistoricalSortOptions struct {
-	Field     string // "symbol", "epoch", "open", "high", "low", "close", "volume", "created_at"
-	Direction string // "asc" or "desc"
+// IndicatorSnapshot represents a single-bar snapshot of computed indicators
+type IndicatorSnapshot struct {
+	Symbol               string  `json:"symbol"`
+	Range                string  `json:"range"`
+	Interval             string  `json:"interval"`
+	Epoch                int64   `json:"epoch"`
+	ATRPercent           float64 `json:"atr_percent"`
+	ADRPercent           float64 `json:"adr_percent"`
+	DailyClosingRangePct float64 `json:"daily_closing_range_percent"`
+	VolumeDollarsSMA_M   float64 `json:"volume_dollars_sma_m"`
+	DailyVolumeDollarsM  float64 `json:"daily_volume_dollars_m"`
+	PercentGainFromMA    float64 `json:"percent_gain_from_ma"`
+	InsideDay            bool    `json:"inside_day"`
 }
 
-// HistoricalPaginationOptions represents pagination options
-type HistoricalPaginationOptions struct {
-	Page  int // 1-indexed page number
-	Limit int // Number of records per page
+// ComputeIndicators computes a snapshot of indicators for the most recent bar
+// using historical table data constrained by symbol/range/interval and lookbacks.
+// It expects data ordered by epoch ascending.
+func (s *HistoricalService) ComputeIndicators(symbol, rangeParam, interval string, lookbacks IndicatorLookbacks) (*IndicatorSnapshot, error) {
+	if symbol == "" || rangeParam == "" || interval == "" {
+		return nil, errors.New("symbol, range and interval are required")
+	}
+
+	var rows []model.Historical
+	if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, rangeParam, interval).
+		Order("epoch ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, errors.New("no historical data")
+	}
+
+	// Most recent bar (data is ordered ASC)
+	last := rows[len(rows)-1]
+
+	// ATR% using TR over consecutive bars, then SMA(ATR, n) / close * 100
+	var atrPct float64 = 0
+	if lookbacks.ATR > 0 {
+		atr := averageTrueRange(rows, lookbacks.ATR)
+		if last.Close != 0 {
+			atrPct = (atr / last.Close) * 100.0
+		}
+	}
+
+	// ADR% = SMA(high-low, n) / close * 100
+	var adrPct float64 = 0
+	if lookbacks.ADR > 0 {
+		rngSeries := make([]float64, 0, len(rows))
+		for _, r := range rows {
+			rngSeries = append(rngSeries, r.High-r.Low)
+		}
+		adr := simpleMovingAverage(rngSeries, lookbacks.ADR)
+		if last.Close != 0 {
+			adrPct = (adr / last.Close) * 100.0
+		}
+	}
+
+	// Daily Closing Range % = (close - low) / (high - low) * 100 for the last bar
+	var dcr float64 = 0
+	denom := last.High - last.Low
+	if denom > 0 {
+		dcr = (last.Close - last.Low) / denom * 100.0
+	}
+
+	// Volume dollars SMA (in millions) over lookbacks.VolumeSMA
+	var volDollarsSMAM float64 = 0
+	if lookbacks.VolumeSMA > 0 {
+		volDollarSeries := make([]float64, 0, len(rows))
+		for _, r := range rows {
+			volDollarSeries = append(volDollarSeries, float64(r.Volume)*r.Close)
+		}
+		v := simpleMovingAverage(volDollarSeries, lookbacks.VolumeSMA)
+		volDollarsSMAM = v / 1_000_000.0
+	}
+
+	// Daily volume dollars (last bar), in millions
+	dailyVolDollarsM := (float64(last.Volume) * last.Close) / 1_000_000.0
+
+	// Percent gain from MA = (close - SMA(close, n)) / SMA(close, n) * 100
+	var pctFromMA float64 = 0
+	if lookbacks.MA > 0 {
+		closes := make([]float64, 0, len(rows))
+		for _, r := range rows {
+			closes = append(closes, r.Close)
+		}
+		ma := simpleMovingAverage(closes, lookbacks.MA)
+		if ma != 0 {
+			pctFromMA = ((last.Close - ma) / ma) * 100.0
+		}
+	}
+
+	// Inside day: last high < previous high AND last low > previous low
+	insideDay := false
+	if len(rows) >= 2 {
+		prev := rows[len(rows)-2]
+		insideDay = last.High < prev.High && last.Low > prev.Low
+	}
+
+	return &IndicatorSnapshot{
+		Symbol:               symbol,
+		Range:                rangeParam,
+		Interval:             interval,
+		Epoch:                last.Epoch,
+		ATRPercent:           atrPct,
+		ADRPercent:           adrPct,
+		DailyClosingRangePct: dcr,
+		VolumeDollarsSMA_M:   volDollarsSMAM,
+		DailyVolumeDollarsM:  dailyVolDollarsM,
+		PercentGainFromMA:    pctFromMA,
+		InsideDay:            insideDay,
+	}, nil
 }
 
-// HistoricalQueryResult represents a paginated query result
-type HistoricalQueryResult struct {
-	Data       []model.Historical `json:"data"`
-	Page       int                `json:"page"`
-	Limit      int                `json:"limit"`
-	Total      int64              `json:"total"`
-	TotalPages int                `json:"total_pages"`
+// simpleMovingAverage returns SMA over the last N values of the series.
+// If there are fewer than N points, it averages available points; if series is empty returns 0.
+func simpleMovingAverage(series []float64, n int) float64 {
+	if n <= 0 || len(series) == 0 {
+		return 0
+	}
+	if len(series) < n {
+		// average over available
+		var sum float64
+		for _, v := range series {
+			sum += v
+		}
+		return sum / float64(len(series))
+	}
+	var sum float64
+	for i := len(series) - n; i < len(series); i++ {
+		sum += series[i]
+	}
+	return sum / float64(n)
 }
 
-// VolumeMetricsResult represents volume metrics for a stock
-type VolumeMetricsResult struct {
-	Symbol                 string `json:"symbol"`
-	HighestVolumeInYear    int64  `json:"highest_volume_in_year"`
-	HighestVolumeInQuarter int64  `json:"highest_volume_in_quarter"`
-	HighestVolumeEver      int64  `json:"highest_volume_ever"`
+// averageTrueRange computes ATR over the last N bars using Wilder's SMA of True Range.
+// If fewer than N bars, it averages available TRs.
+func averageTrueRange(rows []model.Historical, n int) float64 {
+	if n <= 0 || len(rows) == 0 {
+		return 0
+	}
+	// Build TR series
+	trs := make([]float64, 0, len(rows))
+	for i := range rows {
+		cur := rows[i]
+		var prevClose float64
+		if i == 0 {
+			prevClose = cur.Close
+		} else {
+			prevClose = rows[i-1].Close
+		}
+		hl := cur.High - cur.Low
+		hc := abs(cur.High - prevClose)
+		lc := abs(cur.Low - prevClose)
+		tr := hl
+		if hc > tr {
+			tr = hc
+		}
+		if lc > tr {
+			tr = lc
+		}
+		trs = append(trs, tr)
+	}
+	return simpleMovingAverage(trs, n)
+}
+
+func abs(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // NewHistoricalService creates a new instance of HistoricalService
@@ -96,174 +229,196 @@ func (s *HistoricalService) GetHistoricalByID(id string) (*model.Historical, err
 	return &historical, nil
 }
 
-// GetHistoricalBySymbol fetches all historical records for a specific symbol
-func (s *HistoricalService) GetHistoricalBySymbol(symbol string) ([]model.Historical, error) {
-	var historical []model.Historical
-	result := s.db.Where("symbol = ?", symbol).
-		Order("epoch ASC").
-		Find(&historical)
-	if result.Error != nil {
-		return nil, result.Error
+// GetSymbolsWithDailyInsideDay scans all symbols in the historical table
+// and returns those whose latest daily bar is an inside day compared to the
+// immediately previous daily bar.
+// An inside day means: current high < previous high AND current low > previous low
+func (s *HistoricalService) GetSymbolsWithDailyInsideDay() ([]string, error) {
+	// Fetch all unique symbols that have daily records (10y range, 1d interval)
+	var symbols []string
+	if err := s.db.Model(&model.Historical{}).
+		Where("range = ? AND interval = ?", "10y", "1d").
+		Distinct("symbol").
+		Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to load symbols: %w", err)
 	}
 
-	return historical, nil
+	if len(symbols) == 0 {
+		return []string{}, nil
+	}
+
+	matches := make([]string, 0)
+	for _, sym := range symbols {
+		// Get last two DAILY bars (from 10y range) by epoch desc for this symbol
+		var rows []model.Historical
+		if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", sym, "10y", "1d").
+			Order("epoch DESC").
+			Limit(2).
+			Find(&rows).Error; err != nil {
+			continue
+		}
+		if len(rows) < 2 {
+			continue
+		}
+
+		// rows[0] = most recent (current day)
+		// rows[1] = previous day
+		current := rows[0]
+		previous := rows[1]
+
+		// Inside day condition: current high < previous high AND current low > previous low
+		if current.High < previous.High && current.Low > previous.Low {
+			matches = append(matches, sym)
+		}
+	}
+
+	return matches, nil
 }
 
-// GetHistoricalBySymbolAndParams fetches historical records by symbol, range, and interval
-func (s *HistoricalService) GetHistoricalBySymbolAndParams(symbol, rangeParam, interval string) ([]model.Historical, error) {
-	var historical []model.Historical
-	result := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, rangeParam, interval).
-		Order("epoch ASC").
-		Find(&historical)
-	if result.Error != nil {
-		return nil, result.Error
+// GetSymbolsWithHighestVolumeInQuarter scans all symbols' daily bars (interval='1d')
+// within the last 90 days (inclusive) and returns those whose most recent daily bar
+// has the highest volume in that 90-day window.
+func (s *HistoricalService) GetSymbolsWithHighestVolumeInQuarter() ([]string, error) {
+	// Collect distinct symbols that have daily bars
+	var symbols []string
+	if err := s.db.Model(&model.Historical{}).
+		Where("interval = ?", "1d").
+		Distinct("symbol").
+		Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to load symbols: %w", err)
+	}
+	if len(symbols) == 0 {
+		return []string{}, nil
 	}
 
-	return historical, nil
+	// Epoch window: now and 90 days ago
+	now := time.Now()
+	ninetyDaysAgo := now.AddDate(0, 0, -90)
+	maxEpoch := now.Unix()
+	minEpoch := ninetyDaysAgo.Unix()
+
+	matches := make([]string, 0)
+	for _, sym := range symbols {
+		// Fetch last 90 days of daily bars for this symbol
+		var rows []model.Historical
+		if err := s.db.Where("symbol = ? AND interval = ? AND epoch BETWEEN ? AND ?", sym, "1d", minEpoch, maxEpoch).
+			Order("epoch ASC").
+			Find(&rows).Error; err != nil {
+			continue
+		}
+		if len(rows) == 0 {
+			continue
+		}
+
+		// Find max volume in window and compare with last bar
+		var maxVol int64 = 0
+		for _, r := range rows {
+			if r.Volume > maxVol {
+				maxVol = r.Volume
+			}
+		}
+		last := rows[len(rows)-1]
+		if last.Volume >= maxVol { // include ties as "highest"
+			matches = append(matches, sym)
+		}
+	}
+
+	return matches, nil
 }
 
-// GetHistoricalByEpochRange fetches historical records within an epoch range
-func (s *HistoricalService) GetHistoricalByEpochRange(symbol string, minEpoch, maxEpoch int64) ([]model.Historical, error) {
-	var historical []model.Historical
-	result := s.db.Where("symbol = ? AND epoch >= ? AND epoch <= ?", symbol, minEpoch, maxEpoch).
-		Order("epoch ASC").
-		Find(&historical)
-	if result.Error != nil {
-		return nil, result.Error
+// GetSymbolsWithHighestVolumeInYear scans all symbols' daily bars (interval='1d')
+// within the last 365 days (inclusive) and returns those whose most recent daily bar
+// has the highest volume in that 365-day window.
+func (s *HistoricalService) GetSymbolsWithHighestVolumeInYear() ([]string, error) {
+	// Collect distinct symbols that have daily bars
+	var symbols []string
+	if err := s.db.Model(&model.Historical{}).
+		Where("interval = ?", "1d").
+		Distinct("symbol").
+		Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to load symbols: %w", err)
+	}
+	if len(symbols) == 0 {
+		return []string{}, nil
 	}
 
-	return historical, nil
+	// Epoch window: now and 365 days ago
+	now := time.Now()
+	oneYearAgo := now.AddDate(0, 0, -365)
+	maxEpoch := now.Unix()
+	minEpoch := oneYearAgo.Unix()
+
+	matches := make([]string, 0)
+	for _, sym := range symbols {
+		// Fetch last 365 days of daily bars for this symbol
+		var rows []model.Historical
+		if err := s.db.Where("symbol = ? AND interval = ? AND epoch BETWEEN ? AND ?", sym, "1d", minEpoch, maxEpoch).
+			Order("epoch ASC").
+			Find(&rows).Error; err != nil {
+			continue
+		}
+		if len(rows) == 0 {
+			continue
+		}
+
+		// Find max volume in window and compare with last bar
+		var maxVol int64 = 0
+		for _, r := range rows {
+			if r.Volume > maxVol {
+				maxVol = r.Volume
+			}
+		}
+		last := rows[len(rows)-1]
+		if last.Volume >= maxVol { // include ties as "highest"
+			matches = append(matches, sym)
+		}
+	}
+
+	return matches, nil
 }
 
-// GetHistoricalWithFilters fetches historical records with filtering, sorting, and pagination
-func (s *HistoricalService) GetHistoricalWithFilters(
-	filters *HistoricalFilterOptions,
-	sort *HistoricalSortOptions,
-	pagination *HistoricalPaginationOptions,
-) (*HistoricalQueryResult, error) {
-	query := s.db.Model(&model.Historical{})
+// GetSymbolsWithHighestVolumeEver scans all symbols' daily bars (interval='1d')
+// across all available history in the database and returns those whose most recent
+// daily bar has the highest volume ever observed for that symbol.
+func (s *HistoricalService) GetSymbolsWithHighestVolumeEver() ([]string, error) {
+	// Collect distinct symbols that have daily bars
+	var symbols []string
+	if err := s.db.Model(&model.Historical{}).
+		Where("interval = ?", "1d").
+		Distinct("symbol").
+		Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to load symbols: %w", err)
+	}
+	if len(symbols) == 0 {
+		return []string{}, nil
+	}
 
-	// Apply filters
-	if filters != nil {
-		if filters.Symbol != nil && *filters.Symbol != "" {
-			query = query.Where("symbol = ?", *filters.Symbol)
+	matches := make([]string, 0)
+	for _, sym := range symbols {
+		// Fetch ALL daily bars for this symbol
+		var rows []model.Historical
+		if err := s.db.Where("symbol = ? AND interval = ?", sym, "1d").
+			Order("epoch ASC").
+			Find(&rows).Error; err != nil {
+			continue
 		}
-		if filters.MinEpoch != nil {
-			query = query.Where("epoch >= ?", *filters.MinEpoch)
+		if len(rows) == 0 {
+			continue
 		}
-		if filters.MaxEpoch != nil {
-			query = query.Where("epoch <= ?", *filters.MaxEpoch)
+
+		var maxVol int64 = 0
+		for _, r := range rows {
+			if r.Volume > maxVol {
+				maxVol = r.Volume
+			}
 		}
-		if filters.Range != nil && *filters.Range != "" {
-			query = query.Where("range = ?", *filters.Range)
-		}
-		if filters.Interval != nil && *filters.Interval != "" {
-			query = query.Where("interval = ?", *filters.Interval)
-		}
-		if filters.MinOpen != nil {
-			query = query.Where("open >= ?", *filters.MinOpen)
-		}
-		if filters.MaxOpen != nil {
-			query = query.Where("open <= ?", *filters.MaxOpen)
-		}
-		if filters.MinHigh != nil {
-			query = query.Where("high >= ?", *filters.MinHigh)
-		}
-		if filters.MaxHigh != nil {
-			query = query.Where("high <= ?", *filters.MaxHigh)
-		}
-		if filters.MinLow != nil {
-			query = query.Where("low >= ?", *filters.MinLow)
-		}
-		if filters.MaxLow != nil {
-			query = query.Where("low <= ?", *filters.MaxLow)
-		}
-		if filters.MinClose != nil {
-			query = query.Where("close >= ?", *filters.MinClose)
-		}
-		if filters.MaxClose != nil {
-			query = query.Where("close <= ?", *filters.MaxClose)
-		}
-		if filters.MinVolume != nil {
-			query = query.Where("volume >= ?", *filters.MinVolume)
-		}
-		if filters.MaxVolume != nil {
-			query = query.Where("volume <= ?", *filters.MaxVolume)
+		last := rows[len(rows)-1]
+		if last.Volume >= maxVol { // include ties as "highest"
+			matches = append(matches, sym)
 		}
 	}
 
-	// Get total count before pagination
-	var total int64
-	countQuery := query
-	if err := countQuery.Count(&total).Error; err != nil {
-		return nil, fmt.Errorf("failed to count records: %w", err)
-	}
-
-	// Apply sorting
-	if sort != nil && sort.Field != "" {
-		direction := "ASC"
-		if sort.Direction == "desc" {
-			direction = "DESC"
-		}
-		// Validate field name to prevent SQL injection
-		validFields := map[string]bool{
-			"symbol":     true,
-			"epoch":      true,
-			"open":       true,
-			"high":       true,
-			"low":        true,
-			"close":      true,
-			"volume":     true,
-			"created_at": true,
-			"updated_at": true,
-		}
-		if validFields[sort.Field] {
-			query = query.Order(fmt.Sprintf("%s %s", sort.Field, direction))
-		}
-	} else {
-		// Default sorting by epoch
-		query = query.Order("epoch ASC")
-	}
-
-	// Apply pagination
-	if pagination != nil {
-		if pagination.Page < 1 {
-			pagination.Page = 1
-		}
-		if pagination.Limit < 1 {
-			pagination.Limit = 10 // Default limit
-		}
-		if pagination.Limit > 100 {
-			pagination.Limit = 100 // Max limit to prevent performance issues
-		}
-		offset := (pagination.Page - 1) * pagination.Limit
-		query = query.Offset(offset).Limit(pagination.Limit)
-	} else {
-		// Default pagination if none provided
-		pagination = &HistoricalPaginationOptions{Page: 1, Limit: 100}
-		query = query.Limit(100)
-	}
-
-	// Execute query
-	var historical []model.Historical
-	result := query.Find(&historical)
-	if result.Error != nil {
-		return nil, fmt.Errorf("failed to fetch historical data: %w", result.Error)
-	}
-
-	// Calculate total pages
-	totalPages := 1
-	if pagination.Limit > 0 {
-		totalPages = int((total + int64(pagination.Limit) - 1) / int64(pagination.Limit))
-	}
-
-	return &HistoricalQueryResult{
-		Data:       historical,
-		Page:       pagination.Page,
-		Limit:      pagination.Limit,
-		Total:      total,
-		TotalPages: totalPages,
-	}, nil
+	return matches, nil
 }
 
 // CreateHistorical creates a new historical record
@@ -325,22 +480,22 @@ func (s *HistoricalService) UpsertHistoricalBatch(historical []model.Historical)
 		return errors.New("historical records cannot be empty")
 	}
 
-    // Prefer bulk upsert using ON CONFLICT for performance
-    // Requires unique index on (symbol, epoch, range, interval)
-    return s.db.Clauses(clause.OnConflict{
-        Columns: []clause.Column{
-            {Name: "symbol"}, {Name: "epoch"}, {Name: "range"}, {Name: "interval"},
-        },
-        DoUpdates: clause.Assignments(map[string]interface{}{
-            "open":      gorm.Expr("excluded.open"),
-            "high":      gorm.Expr("excluded.high"),
-            "low":       gorm.Expr("excluded.low"),
-            "close":     gorm.Expr("excluded.close"),
-            "adj_close": gorm.Expr("excluded.adj_close"),
-            "volume":    gorm.Expr("excluded.volume"),
-            "updated_at": gorm.Expr("NOW()"),
-        }),
-    }).CreateInBatches(historical, 100).Error
+	// Prefer bulk upsert using ON CONFLICT for performance
+	// Requires unique index on (symbol, epoch, range, interval)
+	return s.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "symbol"}, {Name: "epoch"}, {Name: "range"}, {Name: "interval"},
+		},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"open":       gorm.Expr("excluded.open"),
+			"high":       gorm.Expr("excluded.high"),
+			"low":        gorm.Expr("excluded.low"),
+			"close":      gorm.Expr("excluded.close"),
+			"adj_close":  gorm.Expr("excluded.adj_close"),
+			"volume":     gorm.Expr("excluded.volume"),
+			"updated_at": gorm.Expr("NOW()"),
+		}),
+	}).CreateInBatches(historical, 100).Error
 }
 
 // UpdateHistorical updates an existing historical record
@@ -359,217 +514,4 @@ func (s *HistoricalService) UpdateHistorical(id string, historical *model.Histor
 	}
 
 	return nil
-}
-
-// DeleteHistorical deletes a historical record by ID
-func (s *HistoricalService) DeleteHistorical(id string) error {
-	result := s.db.Where("id = ?", id).Delete(&model.Historical{})
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete historical record: %w", result.Error)
-	}
-
-	if result.RowsAffected == 0 {
-		return errors.New("record not found")
-	}
-
-	return nil
-}
-
-// DeleteHistoricalBySymbol deletes all historical records for a specific symbol
-func (s *HistoricalService) DeleteHistoricalBySymbol(symbol string) error {
-	result := s.db.Where("symbol = ?", symbol).Delete(&model.Historical{})
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete historical records: %w", result.Error)
-	}
-
-	return nil
-}
-
-// DeleteHistoricalBySymbolAndParams deletes historical records by symbol, range, and interval
-func (s *HistoricalService) DeleteHistoricalBySymbolAndParams(symbol, rangeParam, interval string) error {
-	result := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, rangeParam, interval).
-		Delete(&model.Historical{})
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete historical records: %w", result.Error)
-	}
-
-	return nil
-}
-
-// GetCount returns the total count of historical records
-func (s *HistoricalService) GetCount() (int64, error) {
-	var count int64
-	result := s.db.Model(&model.Historical{}).Count(&count)
-	if result.Error != nil {
-		return 0, fmt.Errorf("failed to get count: %w", result.Error)
-	}
-
-	return count, nil
-}
-
-// GetCountBySymbol returns the count of historical records for a specific symbol
-func (s *HistoricalService) GetCountBySymbol(symbol string) (int64, error) {
-	var count int64
-	result := s.db.Model(&model.Historical{}).Where("symbol = ?", symbol).Count(&count)
-	if result.Error != nil {
-		return 0, fmt.Errorf("failed to get count: %w", result.Error)
-	}
-
-	return count, nil
-}
-
-// dailyVolume represents a day's aggregated volume
-type dailyVolume struct {
-	Date   time.Time
-	Volume int64
-}
-
-// GetStocksVolumeMetrics calculates volume metrics for all stocks in the database
-// It fetches range="1d" and interval="30m" data, aggregates into daily volumes,
-// and calculates highest volume in year (365 days), quarter (90 days), and ever
-func (s *HistoricalService) GetStocksVolumeMetrics() ([]VolumeMetricsResult, error) {
-	// Get all unique symbols from the historical table
-	var symbols []string
-	result := s.db.Model(&model.Historical{}).
-		Distinct("symbol").
-		Pluck("symbol", &symbols)
-	if result.Error != nil {
-		return nil, fmt.Errorf("failed to get unique symbols: %w", result.Error)
-	}
-
-	if len(symbols) == 0 {
-		return []VolumeMetricsResult{}, nil
-	}
-
-	results := make([]VolumeMetricsResult, 0, len(symbols))
-	currentTime := time.Now()
-	oneYearAgo := currentTime.AddDate(0, 0, -365)
-	oneQuarterAgo := currentTime.AddDate(0, 0, -90)
-
-	// Convert current time to epoch for comparison
-	currentEpoch := currentTime.Unix()
-	oneYearAgoEpoch := oneYearAgo.Unix()
-	oneQuarterAgoEpoch := oneQuarterAgo.Unix()
-
-	// Process each symbol
-	for _, symbol := range symbols {
-		// Fetch historical records with range="1d" and interval="30m"
-		var historical []model.Historical
-		result := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, "1d", "30m").
-			Order("epoch ASC").
-			Find(&historical)
-		if result.Error != nil {
-			// Log error but continue with next symbol
-			continue
-		}
-
-		if len(historical) == 0 {
-			// No data for this symbol, add with zero metrics
-			results = append(results, VolumeMetricsResult{
-				Symbol:                 symbol,
-				HighestVolumeInYear:    0,
-				HighestVolumeInQuarter: 0,
-				HighestVolumeEver:      0,
-			})
-			continue
-		}
-
-		// Group records by day and sum volumes
-		dailyVolumes := s.groupByDayAndSumVolumes(historical)
-
-		// Calculate metrics
-		highestInYear := s.findHighestVolumeInPeriod(dailyVolumes, oneYearAgoEpoch, currentEpoch)
-		highestInQuarter := s.findHighestVolumeInPeriod(dailyVolumes, oneQuarterAgoEpoch, currentEpoch)
-		highestEver := s.findHighestVolumeEver(dailyVolumes)
-
-		results = append(results, VolumeMetricsResult{
-			Symbol:                 symbol,
-			HighestVolumeInYear:    highestInYear,
-			HighestVolumeInQuarter: highestInQuarter,
-			HighestVolumeEver:      highestEver,
-		})
-	}
-
-	return results, nil
-}
-
-// groupByDayAndSumVolumes groups historical records by day and sums their volumes
-func (s *HistoricalService) groupByDayAndSumVolumes(historical []model.Historical) []dailyVolume {
-	if len(historical) == 0 {
-		return []dailyVolume{}
-	}
-
-	// Map to store daily volumes: date (as string) -> volume sum
-	dailyMap := make(map[string]int64)
-
-	for _, h := range historical {
-		// Convert epoch to time
-		t := time.Unix(h.Epoch, 0)
-		// Get date at midnight (normalize to start of day)
-		dateKey := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-		dateKeyStr := dateKey.Format("2006-01-02")
-
-		// Sum volumes for the same day
-		dailyMap[dateKeyStr] += h.Volume
-	}
-
-	// Convert map to slice of dailyVolume
-	dailyVolumes := make([]dailyVolume, 0, len(dailyMap))
-	for dateStr, volume := range dailyMap {
-		// Parse the date string back to time.Time
-		date, err := time.Parse("2006-01-02", dateStr)
-		if err != nil {
-			continue
-		}
-		dailyVolumes = append(dailyVolumes, dailyVolume{
-			Date:   date,
-			Volume: volume,
-		})
-	}
-
-	return dailyVolumes
-}
-
-// findHighestVolumeInPeriod finds the highest daily volume within a time period (epoch range)
-func (s *HistoricalService) findHighestVolumeInPeriod(dailyVolumes []dailyVolume, minEpoch, maxEpoch int64) int64 {
-	if len(dailyVolumes) == 0 {
-		return 0
-	}
-
-	// Convert epochs to time for date comparison
-	minDate := time.Unix(minEpoch, 0)
-	maxDate := time.Unix(maxEpoch, 0)
-
-	// Normalize to start of day for proper date comparison
-	minDateNormalized := time.Date(minDate.Year(), minDate.Month(), minDate.Day(), 0, 0, 0, 0, minDate.Location())
-	maxDateNormalized := time.Date(maxDate.Year(), maxDate.Month(), maxDate.Day(), 0, 0, 0, 0, maxDate.Location())
-
-	var highest int64 = 0
-	for _, dv := range dailyVolumes {
-		// Compare dates (normalized to start of day) instead of exact epochs
-		// This ensures we include any day that overlaps with the period
-		if !dv.Date.Before(minDateNormalized) && !dv.Date.After(maxDateNormalized) {
-			if dv.Volume > highest {
-				highest = dv.Volume
-			}
-		}
-	}
-
-	return highest
-}
-
-// findHighestVolumeEver finds the highest daily volume across all time
-func (s *HistoricalService) findHighestVolumeEver(dailyVolumes []dailyVolume) int64 {
-	if len(dailyVolumes) == 0 {
-		return 0
-	}
-
-	var highest int64 = 0
-	for _, dv := range dailyVolumes {
-		if dv.Volume > highest {
-			highest = dv.Volume
-		}
-	}
-
-	return highest
 }
