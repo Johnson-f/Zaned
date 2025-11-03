@@ -7,11 +7,11 @@ import { API_ENDPOINTS, createAuthHeaders } from "../config/api";
 import type {
   ApiResponse,
   Historical,
-  HistoricalFilterOptions,
-  HistoricalPaginationOptions,
-  HistoricalQueryResult,
-  HistoricalSortOptions,
-  VolumeMetricsResult,
+  SymbolsResponse,
+  AdrPercentResponse,
+  AtrPercentResponse,
+  AvgVolumeDollarsResponse,
+  AvgVolumePercentResponse,
 } from "../types/historical";
 
 /**
@@ -68,114 +68,164 @@ export async function getHistoricalById(
   return fetchApi<Historical>(API_ENDPOINTS.HISTORICAL.BY_ID(id));
 }
 
-/**
- * Get historical records by symbol
- */
-export async function getHistoricalBySymbol(
-  symbol: string
-): Promise<ApiResponse<Historical[]>> {
-  return fetchApi<Historical[]>(API_ENDPOINTS.HISTORICAL.BY_SYMBOL(symbol));
-}
-
-/**
- * Get historical records by symbol, range, and interval
- */
-export async function getHistoricalBySymbolAndParams(
-  symbol: string,
-  range: string,
-  interval: string
-): Promise<ApiResponse<Historical[]>> {
-  return fetchApi<Historical[]>(
-    API_ENDPOINTS.HISTORICAL.BY_SYMBOL_AND_PARAMS(symbol, range, interval)
-  );
-}
-
-/**
- * Get historical records with filters, sorting, and pagination
- */
-export async function getHistoricalWithFilters(
-  filters?: HistoricalFilterOptions,
-  sort?: HistoricalSortOptions,
-  pagination?: HistoricalPaginationOptions
-): Promise<ApiResponse<HistoricalQueryResult>> {
-  const params = new URLSearchParams();
-
-  // Add filter parameters
-  if (filters) {
-    if (filters.symbol) params.append("symbol", filters.symbol);
-    if (filters.minEpoch !== undefined)
-      params.append("min_epoch", filters.minEpoch.toString());
-    if (filters.maxEpoch !== undefined)
-      params.append("max_epoch", filters.maxEpoch.toString());
-    if (filters.range) params.append("range", filters.range);
-    if (filters.interval) params.append("interval", filters.interval);
-    if (filters.minOpen !== undefined)
-      params.append("min_open", filters.minOpen.toString());
-    if (filters.maxOpen !== undefined)
-      params.append("max_open", filters.maxOpen.toString());
-    if (filters.minHigh !== undefined)
-      params.append("min_high", filters.minHigh.toString());
-    if (filters.maxHigh !== undefined)
-      params.append("max_high", filters.maxHigh.toString());
-    if (filters.minLow !== undefined)
-      params.append("min_low", filters.minLow.toString());
-    if (filters.maxLow !== undefined)
-      params.append("max_low", filters.maxLow.toString());
-    if (filters.minClose !== undefined)
-      params.append("min_close", filters.minClose.toString());
-    if (filters.maxClose !== undefined)
-      params.append("max_close", filters.maxClose.toString());
-    if (filters.minVolume !== undefined)
-      params.append("min_volume", filters.minVolume.toString());
-    if (filters.maxVolume !== undefined)
-      params.append("max_volume", filters.maxVolume.toString());
-  }
-
-  // Add sort parameters
-  if (sort) {
-    params.append("sort_field", sort.field);
-    params.append("sort_direction", sort.direction);
-  }
-
-  // Add pagination parameters
-  if (pagination) {
-    params.append("page", pagination.page.toString());
-    params.append("limit", pagination.limit.toString());
-  }
-
-  const url = `${API_ENDPOINTS.HISTORICAL.FILTER}?${params.toString()}`;
-  return fetchApi<HistoricalQueryResult>(url);
-}
-
-/**
- * Get total count of historical records
- */
-export async function getHistoricalCount(): Promise<
-  ApiResponse<{ count: number }>
+export async function getInsideDaySymbols(): Promise<
+  ApiResponse<{ symbols: string[]; count: number }>
 > {
-  return fetchApi<{ count: number }>(API_ENDPOINTS.HISTORICAL.COUNT);
-}
-
-/**
- * Get count of historical records by symbol
- */
-export async function getHistoricalCountBySymbol(
-  symbol: string
-): Promise<ApiResponse<{ symbol: string; count: number }>> {
-  return fetchApi<{ symbol: string; count: number }>(
-    API_ENDPOINTS.HISTORICAL.COUNT_BY_SYMBOL(symbol)
+  return fetchApi<{ symbols: string[]; count: number }>(
+    API_ENDPOINTS.SCREENING.INSIDE_DAY
   );
 }
 
-/**
- * Get stocks volume metrics
- */
-export async function getStocksVolumeMetrics(): Promise<
-  ApiResponse<VolumeMetricsResult[]>
+export async function getHighVolumeQuarterSymbols(): Promise<
+  ApiResponse<{ symbols: string[]; count: number }>
 > {
-  return fetchApi<VolumeMetricsResult[]>(
-    API_ENDPOINTS.HISTORICAL.VOLUME_METRICS
+  return fetchApi<{ symbols: string[]; count: number }>(
+    API_ENDPOINTS.SCREENING.HIGH_VOLUME_QUARTER
   );
+}
+
+export async function getHighVolumeYearSymbols(): Promise<
+  ApiResponse<{ symbols: string[]; count: number }>
+> {
+  return fetchApi<{ symbols: string[]; count: number }>(
+    API_ENDPOINTS.SCREENING.HIGH_VOLUME_YEAR
+  );
+}
+
+export async function getHighVolumeEverSymbols(): Promise<
+  ApiResponse<{ symbols: string[]; count: number }>
+> {
+  return fetchApi<{ symbols: string[]; count: number }>(
+    API_ENDPOINTS.SCREENING.HIGH_VOLUME_EVER
+  );
+}
+
+export async function getAdrScreen(params: {
+  range?: string;
+  interval?: string;
+  lookback?: number;
+  minAdr?: number;
+  maxAdr?: number;
+}): Promise<ApiResponse<SymbolsResponse>> {
+  const url = API_ENDPOINTS.SCREENING.ADR_SCREEN(
+    params.range,
+    params.interval,
+    params.lookback,
+    params.minAdr,
+    params.maxAdr
+  );
+  return fetchApi<SymbolsResponse>(url);
+}
+
+export async function getAtrScreen(params: {
+  range?: string;
+  interval?: string;
+  lookback?: number;
+  minAtr?: number;
+  maxAtr?: number;
+}): Promise<ApiResponse<SymbolsResponse>> {
+  const url = API_ENDPOINTS.SCREENING.ATR_SCREEN(
+    params.range,
+    params.interval,
+    params.lookback,
+    params.minAtr,
+    params.maxAtr
+  );
+  return fetchApi<SymbolsResponse>(url);
+}
+
+export async function getAdrForSymbol(params: {
+  symbol: string;
+  range?: string;
+  interval?: string;
+  lookback?: number;
+}): Promise<ApiResponse<AdrPercentResponse>> {
+  const url = API_ENDPOINTS.SCREENING.ADR(
+    params.symbol,
+    params.range,
+    params.interval,
+    params.lookback
+  );
+  return fetchApi<AdrPercentResponse>(url);
+}
+
+export async function getAtrForSymbol(params: {
+  symbol: string;
+  range?: string;
+  interval?: string;
+  lookback?: number;
+}): Promise<ApiResponse<AtrPercentResponse>> {
+  const url = API_ENDPOINTS.SCREENING.ATR(
+    params.symbol,
+    params.range,
+    params.interval,
+    params.lookback
+  );
+  return fetchApi<AtrPercentResponse>(url);
+}
+
+export async function getAvgVolumeDollarsScreen(params: {
+  range?: string;
+  interval?: string;
+  lookback?: number;
+  minVolDollarsM?: number;
+  maxVolDollarsM?: number;
+}): Promise<ApiResponse<SymbolsResponse>> {
+  const url = API_ENDPOINTS.SCREENING.AVG_VOLUME_DOLLARS_SCREEN(
+    params.range,
+    params.interval,
+    params.lookback,
+    params.minVolDollarsM,
+    params.maxVolDollarsM
+  );
+  return fetchApi<SymbolsResponse>(url);
+}
+
+export async function getAvgVolumePercentScreen(params: {
+  range?: string;
+  interval?: string;
+  lookback?: number;
+  minVolPercent?: number;
+  maxVolPercent?: number;
+}): Promise<ApiResponse<SymbolsResponse>> {
+  const url = API_ENDPOINTS.SCREENING.AVG_VOLUME_PERCENT_SCREEN(
+    params.range,
+    params.interval,
+    params.lookback,
+    params.minVolPercent,
+    params.maxVolPercent
+  );
+  return fetchApi<SymbolsResponse>(url);
+}
+
+export async function getAvgVolumeDollarsForSymbol(params: {
+  symbol: string;
+  range?: string;
+  interval?: string;
+  lookback?: number;
+}): Promise<ApiResponse<AvgVolumeDollarsResponse>> {
+  const url = API_ENDPOINTS.SCREENING.AVG_VOLUME_DOLLARS(
+    params.symbol,
+    params.range,
+    params.interval,
+    params.lookback
+  );
+  return fetchApi<AvgVolumeDollarsResponse>(url);
+}
+
+export async function getAvgVolumePercentForSymbol(params: {
+  symbol: string;
+  range?: string;
+  interval?: string;
+  lookback?: number;
+}): Promise<ApiResponse<AvgVolumePercentResponse>> {
+  const url = API_ENDPOINTS.SCREENING.AVG_VOLUME_PERCENT(
+    params.symbol,
+    params.range,
+    params.interval,
+    params.lookback
+  );
+  return fetchApi<AvgVolumePercentResponse>(url);
 }
 
 /**
@@ -261,34 +311,3 @@ export async function deleteHistorical(
     }
   );
 }
-
-/**
- * Delete all historical records by symbol
- */
-export async function deleteHistoricalBySymbol(
-  symbol: string
-): Promise<ApiResponse<{ message: string }>> {
-  return fetchApi<{ message: string }>(
-    API_ENDPOINTS.HISTORICAL.DELETE_BY_SYMBOL(symbol),
-    {
-      method: "DELETE",
-    }
-  );
-}
-
-/**
- * Delete historical records by symbol, range, and interval
- */
-export async function deleteHistoricalBySymbolAndParams(
-  symbol: string,
-  range: string,
-  interval: string
-): Promise<ApiResponse<{ message: string }>> {
-  return fetchApi<{ message: string }>(
-    API_ENDPOINTS.HISTORICAL.DELETE_BY_SYMBOL_AND_PARAMS(symbol, range, interval),
-    {
-      method: "DELETE",
-    }
-  );
-}
-

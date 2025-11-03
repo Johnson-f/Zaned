@@ -130,6 +130,402 @@ func SetupRoutes(app *fiber.App) {
 				},
 			})
 		})
+
+		// ADR screening (public) - filter stocks by ADR% with configurable lookback
+		public.Get("/adr-screen", func(c *fiber.Ctx) error {
+			rangeParam := c.Query("range")
+			interval := c.Query("interval")
+			lookbackStr := c.Query("lookback", "14") // default 14 days
+
+			lookback, err := strconv.Atoi(lookbackStr)
+			if err != nil || lookback <= 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "lookback must be a positive integer",
+				})
+			}
+
+			var minADR, maxADR *float64
+			if minStr := c.Query("min_adr"); minStr != "" {
+				if val, err := strconv.ParseFloat(minStr, 64); err == nil {
+					minADR = &val
+				}
+			}
+			if maxStr := c.Query("max_adr"); maxStr != "" {
+				if val, err := strconv.ParseFloat(maxStr, 64); err == nil {
+					maxADR = &val
+				}
+			}
+
+			symbols, err := historicalService.GetSymbolsByADR(rangeParam, interval, lookback, minADR, maxADR)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbols": symbols,
+					"count":   len(symbols),
+					"params": fiber.Map{
+						"range":    rangeParam,
+						"interval": interval,
+						"lookback": lookback,
+						"min_adr":  minADR,
+						"max_adr":  maxADR,
+					},
+				},
+			})
+		})
+
+		// ATR screening (public) - filter stocks by ATR% with configurable lookback
+		public.Get("/atr-screen", func(c *fiber.Ctx) error {
+			rangeParam := c.Query("range")
+			interval := c.Query("interval")
+			lookbackStr := c.Query("lookback", "14") // default 14 days
+
+			lookback, err := strconv.Atoi(lookbackStr)
+			if err != nil || lookback <= 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "lookback must be a positive integer",
+				})
+			}
+
+			var minATR, maxATR *float64
+			if minStr := c.Query("min_atr"); minStr != "" {
+				if val, err := strconv.ParseFloat(minStr, 64); err == nil {
+					minATR = &val
+				}
+			}
+			if maxStr := c.Query("max_atr"); maxStr != "" {
+				if val, err := strconv.ParseFloat(maxStr, 64); err == nil {
+					maxATR = &val
+				}
+			}
+
+			symbols, err := historicalService.GetSymbolsByATR(rangeParam, interval, lookback, minATR, maxATR)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbols": symbols,
+					"count":   len(symbols),
+					"params": fiber.Map{
+						"range":    rangeParam,
+						"interval": interval,
+						"lookback": lookback,
+						"min_atr":  minATR,
+						"max_atr":  maxATR,
+					},
+				},
+			})
+		})
+
+		// Get ADR% for a specific stock (public)
+		public.Get("/adr", func(c *fiber.Ctx) error {
+			symbol := c.Query("symbol")
+			rangeParam := c.Query("range")
+			interval := c.Query("interval")
+			lookbackStr := c.Query("lookback", "14")
+
+			if symbol == "" || rangeParam == "" || interval == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "symbol, range, and interval are required",
+				})
+			}
+
+			lookback, err := strconv.Atoi(lookbackStr)
+			if err != nil || lookback <= 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "lookback must be a positive integer",
+				})
+			}
+
+			adrPercent, err := historicalService.GetADRForSymbol(symbol, rangeParam, interval, lookback)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbol":      symbol,
+					"adr_percent": adrPercent,
+					"params": fiber.Map{
+						"range":    rangeParam,
+						"interval": interval,
+						"lookback": lookback,
+					},
+				},
+			})
+		})
+
+		// Get ATR% for a specific stock (public)
+		public.Get("/atr", func(c *fiber.Ctx) error {
+			symbol := c.Query("symbol")
+			rangeParam := c.Query("range")
+			interval := c.Query("interval")
+			lookbackStr := c.Query("lookback", "14")
+
+			if symbol == "" || rangeParam == "" || interval == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "symbol, range, and interval are required",
+				})
+			}
+
+			lookback, err := strconv.Atoi(lookbackStr)
+			if err != nil || lookback <= 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "lookback must be a positive integer",
+				})
+			}
+
+			atrPercent, err := historicalService.GetATRForSymbol(symbol, rangeParam, interval, lookback)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbol":      symbol,
+					"atr_percent": atrPercent,
+					"params": fiber.Map{
+						"range":    rangeParam,
+						"interval": interval,
+						"lookback": lookback,
+					},
+				},
+			})
+		})
+
+		// Average volume in dollars screening (public)
+		public.Get("/avg-volume-dollars-screen", func(c *fiber.Ctx) error {
+			rangeParam := c.Query("range")
+			interval := c.Query("interval")
+			lookbackStr := c.Query("lookback", "50")
+
+			lookback, err := strconv.Atoi(lookbackStr)
+			if err != nil || lookback <= 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "lookback must be a positive integer",
+				})
+			}
+
+			var minVolDollarsM, maxVolDollarsM *float64
+			if minStr := c.Query("min_vol_dollars_m"); minStr != "" {
+				if val, err := strconv.ParseFloat(minStr, 64); err == nil {
+					minVolDollarsM = &val
+				}
+			}
+			if maxStr := c.Query("max_vol_dollars_m"); maxStr != "" {
+				if val, err := strconv.ParseFloat(maxStr, 64); err == nil {
+					maxVolDollarsM = &val
+				}
+			}
+
+			symbols, err := historicalService.GetSymbolsByAvgVolumeDollars(rangeParam, interval, lookback, minVolDollarsM, maxVolDollarsM)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbols": symbols,
+					"count":   len(symbols),
+					"params": fiber.Map{
+						"range":             rangeParam,
+						"interval":          interval,
+						"lookback":          lookback,
+						"min_vol_dollars_m": minVolDollarsM,
+						"max_vol_dollars_m": maxVolDollarsM,
+					},
+				},
+			})
+		})
+
+		// Average volume in percent screening (public)
+		public.Get("/avg-volume-percent-screen", func(c *fiber.Ctx) error {
+			rangeParam := c.Query("range")
+			interval := c.Query("interval")
+			lookbackStr := c.Query("lookback", "50")
+
+			lookback, err := strconv.Atoi(lookbackStr)
+			if err != nil || lookback <= 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "lookback must be a positive integer",
+				})
+			}
+
+			var minVolPercent, maxVolPercent *float64
+			if minStr := c.Query("min_vol_percent"); minStr != "" {
+				if val, err := strconv.ParseFloat(minStr, 64); err == nil {
+					minVolPercent = &val
+				}
+			}
+			if maxStr := c.Query("max_vol_percent"); maxStr != "" {
+				if val, err := strconv.ParseFloat(maxStr, 64); err == nil {
+					maxVolPercent = &val
+				}
+			}
+
+			symbols, err := historicalService.GetSymbolsByAvgVolumePercent(rangeParam, interval, lookback, minVolPercent, maxVolPercent)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbols": symbols,
+					"count":   len(symbols),
+					"params": fiber.Map{
+						"range":           rangeParam,
+						"interval":        interval,
+						"lookback":        lookback,
+						"min_vol_percent": minVolPercent,
+						"max_vol_percent": maxVolPercent,
+					},
+				},
+			})
+		})
+
+		// Get average volume in dollars for a specific stock (public)
+		public.Get("/avg-volume-dollars", func(c *fiber.Ctx) error {
+			symbol := c.Query("symbol")
+			rangeParam := c.Query("range")
+			interval := c.Query("interval")
+			lookbackStr := c.Query("lookback", "50")
+
+			if symbol == "" || rangeParam == "" || interval == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "symbol, range, and interval are required",
+				})
+			}
+
+			lookback, err := strconv.Atoi(lookbackStr)
+			if err != nil || lookback <= 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "lookback must be a positive integer",
+				})
+			}
+
+			avgVolDollarsM, err := historicalService.GetAvgVolumeDollarsForSymbol(symbol, rangeParam, interval, lookback)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbol":            symbol,
+					"avg_vol_dollars_m": avgVolDollarsM,
+					"params": fiber.Map{
+						"range":    rangeParam,
+						"interval": interval,
+						"lookback": lookback,
+					},
+				},
+			})
+		})
+
+		// Get average volume in percent for a specific stock (public)
+		public.Get("/avg-volume-percent", func(c *fiber.Ctx) error {
+			symbol := c.Query("symbol")
+			rangeParam := c.Query("range")
+			interval := c.Query("interval")
+			lookbackStr := c.Query("lookback", "50")
+
+			if symbol == "" || rangeParam == "" || interval == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "symbol, range, and interval are required",
+				})
+			}
+
+			lookback, err := strconv.Atoi(lookbackStr)
+			if err != nil || lookback <= 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "lookback must be a positive integer",
+				})
+			}
+
+			volPercent, err := historicalService.GetAvgVolumePercentForSymbol(symbol, rangeParam, interval, lookback)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbol":      symbol,
+					"vol_percent": volPercent,
+					"params": fiber.Map{
+						"range":    rangeParam,
+						"interval": interval,
+						"lookback": lookback,
+					},
+				},
+			})
+		})
 	}
 
 	// Protected routes (require JWT authentication)
@@ -522,18 +918,6 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
-		// Removed historical/filter route
-
-		// Removed historical/count route
-
-		// Removed historical/count/:symbol route
-
-		// Removed historical/symbol/:symbol/params route
-
-		// Removed historical/symbol/:symbol route
-
-		// Removed historical/volume-metrics route
-
 		// Create historical record
 		protected.Post("/historical", func(c *fiber.Ctx) error {
 			var historical model.Historical
@@ -668,12 +1052,6 @@ func SetupRoutes(app *fiber.App) {
 				"message": "Historical record updated successfully",
 			})
 		})
-
-		// Removed DELETE /historical/:id
-
-		// Removed DELETE /historical/symbol/:symbol/params
-
-		// Removed DELETE /historical/symbol/:symbol
 
 		// Get historical record by ID (must be last to avoid matching specific routes)
 		protected.Get("/historical/:id", func(c *fiber.Ctx) error {

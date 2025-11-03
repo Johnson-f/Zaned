@@ -8,13 +8,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import type {
-  Historical,
-  HistoricalFilterOptions,
-  HistoricalPaginationOptions,
-  HistoricalSortOptions,
-  VolumeMetricsResult,
-} from "../lib/types/historical";
+import type { Historical } from "../lib/types/historical";
 import * as historicalService from "../lib/service/historical.service";
 
 /**
@@ -35,17 +29,10 @@ const CACHE_CONFIG = {
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
   },
-  // Volume metrics - cache for 10 minutes, stale after 5 minutes
-  METRICS: {
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
-  },
-  // Count query - cache for 5 minutes, stale after 3 minutes
-  COUNT: {
-    staleTime: 3 * 60 * 1000, // 3 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes
+  // Screening queries - cache for 2 minutes, stale after 1 minute
+  SCREENING: {
+    staleTime: 1 * 60 * 1000, // 1 minute
+    gcTime: 2 * 60 * 1000, // 2 minutes
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
   },
@@ -57,21 +44,30 @@ const CACHE_CONFIG = {
 export const historicalKeys = {
   all: ["historical"] as const,
   lists: () => [...historicalKeys.all, "list"] as const,
-  list: (
-    filters?: HistoricalFilterOptions,
-    sort?: HistoricalSortOptions,
-    pagination?: HistoricalPaginationOptions
-  ) => [...historicalKeys.lists(), filters, sort, pagination] as const,
   details: () => [...historicalKeys.all, "detail"] as const,
   detail: (id: string) => [...historicalKeys.details(), id] as const,
-  bySymbol: (symbol: string) =>
-    [...historicalKeys.all, "symbol", symbol] as const,
-  bySymbolAndParams: (symbol: string, range: string, interval: string) =>
-    [...historicalKeys.all, "symbol", symbol, "params", range, interval] as const,
-  count: () => [...historicalKeys.all, "count"] as const,
-  countBySymbol: (symbol: string) =>
-    [...historicalKeys.all, "count", symbol] as const,
-  volumeMetrics: () => [...historicalKeys.all, "volume-metrics"] as const,
+  // Screening query keys
+  screening: () => [...historicalKeys.all, "screening"] as const,
+  insideDay: () => [...historicalKeys.screening(), "inside-day"] as const,
+  highVolumeQuarter: () => [...historicalKeys.screening(), "high-volume-quarter"] as const,
+  highVolumeYear: () => [...historicalKeys.screening(), "high-volume-year"] as const,
+  highVolumeEver: () => [...historicalKeys.screening(), "high-volume-ever"] as const,
+  adrScreen: (params?: { range?: string; interval?: string; lookback?: number; minAdr?: number; maxAdr?: number }) =>
+    [...historicalKeys.screening(), "adr-screen", params] as const,
+  atrScreen: (params?: { range?: string; interval?: string; lookback?: number; minAtr?: number; maxAtr?: number }) =>
+    [...historicalKeys.screening(), "atr-screen", params] as const,
+  adrForSymbol: (symbol: string, params?: { range?: string; interval?: string; lookback?: number }) =>
+    [...historicalKeys.screening(), "adr", symbol, params] as const,
+  atrForSymbol: (symbol: string, params?: { range?: string; interval?: string; lookback?: number }) =>
+    [...historicalKeys.screening(), "atr", symbol, params] as const,
+  avgVolumeDollarsScreen: (params?: { range?: string; interval?: string; lookback?: number; minVolDollarsM?: number; maxVolDollarsM?: number }) =>
+    [...historicalKeys.screening(), "avg-volume-dollars-screen", params] as const,
+  avgVolumePercentScreen: (params?: { range?: string; interval?: string; lookback?: number; minVolPercent?: number; maxVolPercent?: number }) =>
+    [...historicalKeys.screening(), "avg-volume-percent-screen", params] as const,
+  avgVolumeDollarsForSymbol: (symbol: string, params?: { range?: string; interval?: string; lookback?: number }) =>
+    [...historicalKeys.screening(), "avg-volume-dollars", symbol, params] as const,
+  avgVolumePercentForSymbol: (symbol: string, params?: { range?: string; interval?: string; lookback?: number }) =>
+    [...historicalKeys.screening(), "avg-volume-percent", symbol, params] as const,
 };
 
 /**
@@ -114,141 +110,276 @@ export function useHistoricalById(id: string, enabled: boolean = true) {
 }
 
 /**
- * Hook to get historical records by symbol
+ * Public Screening Hooks
  */
-export function useHistoricalBySymbol(symbol: string, enabled: boolean = true) {
-  return useQuery({
-    queryKey: historicalKeys.bySymbol(symbol),
-    queryFn: async () => {
-      const response = await historicalService.getHistoricalBySymbol(symbol);
-      if (!response.success) {
-        throw new Error(response.message || "Failed to fetch historical records");
-      }
-      return response.data || [];
-    },
-    enabled: enabled && !!symbol,
-    ...CACHE_CONFIG.LIST,
-    placeholderData: (previousData) => previousData,
-    structuralSharing: true,
-  });
-}
 
-/**
- * Hook to get historical records by symbol, range, and interval
- */
-export function useHistoricalBySymbolAndParams(
-  symbol: string,
-  range: string,
-  interval: string,
-  enabled: boolean = true
-) {
+export function useInsideDaySymbols(enabled: boolean = true) {
   return useQuery({
-    queryKey: historicalKeys.bySymbolAndParams(symbol, range, interval),
+    queryKey: historicalKeys.insideDay(),
     queryFn: async () => {
-      const response = await historicalService.getHistoricalBySymbolAndParams(
-        symbol,
-        range,
-        interval
-      );
+      const response = await historicalService.getInsideDaySymbols();
       if (!response.success) {
-        throw new Error(response.message || "Failed to fetch historical records");
-      }
-      return response.data || [];
-    },
-    enabled: enabled && !!symbol && !!range && !!interval,
-    ...CACHE_CONFIG.LIST,
-    placeholderData: (previousData) => previousData,
-    structuralSharing: true,
-  });
-}
-
-/**
- * Hook to get historical records with filters, sorting, and pagination
- */
-export function useHistoricalWithFilters(
-  filters?: HistoricalFilterOptions,
-  sort?: HistoricalSortOptions,
-  pagination?: HistoricalPaginationOptions,
-  enabled: boolean = true
-) {
-  return useQuery({
-    queryKey: historicalKeys.list(filters, sort, pagination),
-    queryFn: async () => {
-      const response = await historicalService.getHistoricalWithFilters(
-        filters,
-        sort,
-        pagination
-      );
-      if (!response.success) {
-        throw new Error(response.message || "Failed to fetch historical records");
+        throw new Error(response.message || "Failed to fetch inside day symbols");
       }
       return response.data;
     },
     enabled,
-    ...CACHE_CONFIG.LIST,
+    ...CACHE_CONFIG.SCREENING,
     placeholderData: (previousData) => previousData,
     structuralSharing: true,
   });
 }
 
-/**
- * Hook to get historical count
- */
-export function useHistoricalCount(enabled: boolean = true) {
+export function useHighVolumeQuarterSymbols(enabled: boolean = true) {
   return useQuery({
-    queryKey: historicalKeys.count(),
+    queryKey: historicalKeys.highVolumeQuarter(),
     queryFn: async () => {
-      const response = await historicalService.getHistoricalCount();
+      const response = await historicalService.getHighVolumeQuarterSymbols();
       if (!response.success) {
-        throw new Error(response.message || "Failed to fetch count");
+        throw new Error(response.message || "Failed to fetch high volume quarter symbols");
       }
-      return response.data?.count || 0;
+      return response.data;
     },
     enabled,
-    ...CACHE_CONFIG.COUNT,
+    ...CACHE_CONFIG.SCREENING,
     placeholderData: (previousData) => previousData,
     structuralSharing: true,
   });
 }
 
-/**
- * Hook to get historical count by symbol
- */
-export function useHistoricalCountBySymbol(
-  symbol: string,
+export function useHighVolumeYearSymbols(enabled: boolean = true) {
+  return useQuery({
+    queryKey: historicalKeys.highVolumeYear(),
+    queryFn: async () => {
+      const response = await historicalService.getHighVolumeYearSymbols();
+      if (!response.success) {
+        throw new Error(response.message || "Failed to fetch high volume year symbols");
+      }
+      return response.data;
+    },
+    enabled,
+    ...CACHE_CONFIG.SCREENING,
+    placeholderData: (previousData) => previousData,
+    structuralSharing: true,
+  });
+}
+
+export function useHighVolumeEverSymbols(enabled: boolean = true) {
+  return useQuery({
+    queryKey: historicalKeys.highVolumeEver(),
+    queryFn: async () => {
+      const response = await historicalService.getHighVolumeEverSymbols();
+      if (!response.success) {
+        throw new Error(response.message || "Failed to fetch high volume ever symbols");
+      }
+      return response.data;
+    },
+    enabled,
+    ...CACHE_CONFIG.SCREENING,
+    placeholderData: (previousData) => previousData,
+    structuralSharing: true,
+  });
+}
+
+export function useAdrScreen(
+  params: {
+    range?: string;
+    interval?: string;
+    lookback?: number;
+    minAdr?: number;
+    maxAdr?: number;
+  },
   enabled: boolean = true
 ) {
   return useQuery({
-    queryKey: historicalKeys.countBySymbol(symbol),
+    queryKey: historicalKeys.adrScreen(params),
     queryFn: async () => {
-      const response = await historicalService.getHistoricalCountBySymbol(symbol);
+      const response = await historicalService.getAdrScreen(params);
       if (!response.success) {
-        throw new Error(response.message || "Failed to fetch count");
+        throw new Error(response.message || "Failed to fetch ADR screen");
       }
-      return response.data?.count || 0;
+      return response.data;
     },
-    enabled: enabled && !!symbol,
-    ...CACHE_CONFIG.COUNT,
+    enabled: enabled && !!(params.range && params.interval),
+    ...CACHE_CONFIG.SCREENING,
     placeholderData: (previousData) => previousData,
     structuralSharing: true,
   });
 }
 
-/**
- * Hook to get stocks volume metrics
- */
-export function useStocksVolumeMetrics(enabled: boolean = true) {
+export function useAtrScreen(
+  params: {
+    range?: string;
+    interval?: string;
+    lookback?: number;
+    minAtr?: number;
+    maxAtr?: number;
+  },
+  enabled: boolean = true
+) {
   return useQuery({
-    queryKey: historicalKeys.volumeMetrics(),
+    queryKey: historicalKeys.atrScreen(params),
     queryFn: async () => {
-      const response = await historicalService.getStocksVolumeMetrics();
+      const response = await historicalService.getAtrScreen(params);
       if (!response.success) {
-        throw new Error(response.message || "Failed to fetch volume metrics");
+        throw new Error(response.message || "Failed to fetch ATR screen");
       }
-      return response.data || [];
+      return response.data;
     },
-    enabled,
-    ...CACHE_CONFIG.METRICS,
+    enabled: enabled && !!(params.range && params.interval),
+    ...CACHE_CONFIG.SCREENING,
+    placeholderData: (previousData) => previousData,
+    structuralSharing: true,
+  });
+}
+
+export function useAdrForSymbol(
+  params: {
+    symbol: string;
+    range?: string;
+    interval?: string;
+    lookback?: number;
+  },
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: historicalKeys.adrForSymbol(params.symbol, params),
+    queryFn: async () => {
+      const response = await historicalService.getAdrForSymbol(params);
+      if (!response.success) {
+        throw new Error(response.message || "Failed to fetch ADR for symbol");
+      }
+      return response.data;
+    },
+    enabled: enabled && !!params.symbol && !!params.range && !!params.interval,
+    ...CACHE_CONFIG.SCREENING,
+    placeholderData: (previousData) => previousData,
+    structuralSharing: true,
+  });
+}
+
+export function useAtrForSymbol(
+  params: {
+    symbol: string;
+    range?: string;
+    interval?: string;
+    lookback?: number;
+  },
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: historicalKeys.atrForSymbol(params.symbol, params),
+    queryFn: async () => {
+      const response = await historicalService.getAtrForSymbol(params);
+      if (!response.success) {
+        throw new Error(response.message || "Failed to fetch ATR for symbol");
+      }
+      return response.data;
+    },
+    enabled: enabled && !!params.symbol && !!params.range && !!params.interval,
+    ...CACHE_CONFIG.SCREENING,
+    placeholderData: (previousData) => previousData,
+    structuralSharing: true,
+  });
+}
+
+export function useAvgVolumeDollarsScreen(
+  params: {
+    range?: string;
+    interval?: string;
+    lookback?: number;
+    minVolDollarsM?: number;
+    maxVolDollarsM?: number;
+  },
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: historicalKeys.avgVolumeDollarsScreen(params),
+    queryFn: async () => {
+      const response = await historicalService.getAvgVolumeDollarsScreen(params);
+      if (!response.success) {
+        throw new Error(response.message || "Failed to fetch avg volume dollars screen");
+      }
+      return response.data;
+    },
+    enabled: enabled && !!(params.range && params.interval),
+    ...CACHE_CONFIG.SCREENING,
+    placeholderData: (previousData) => previousData,
+    structuralSharing: true,
+  });
+}
+
+export function useAvgVolumePercentScreen(
+  params: {
+    range?: string;
+    interval?: string;
+    lookback?: number;
+    minVolPercent?: number;
+    maxVolPercent?: number;
+  },
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: historicalKeys.avgVolumePercentScreen(params),
+    queryFn: async () => {
+      const response = await historicalService.getAvgVolumePercentScreen(params);
+      if (!response.success) {
+        throw new Error(response.message || "Failed to fetch avg volume percent screen");
+      }
+      return response.data;
+    },
+    enabled: enabled && !!(params.range && params.interval),
+    ...CACHE_CONFIG.SCREENING,
+    placeholderData: (previousData) => previousData,
+    structuralSharing: true,
+  });
+}
+
+export function useAvgVolumeDollarsForSymbol(
+  params: {
+    symbol: string;
+    range?: string;
+    interval?: string;
+    lookback?: number;
+  },
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: historicalKeys.avgVolumeDollarsForSymbol(params.symbol, params),
+    queryFn: async () => {
+      const response = await historicalService.getAvgVolumeDollarsForSymbol(params);
+      if (!response.success) {
+        throw new Error(response.message || "Failed to fetch avg volume dollars for symbol");
+      }
+      return response.data;
+    },
+    enabled: enabled && !!params.symbol && !!params.range && !!params.interval,
+    ...CACHE_CONFIG.SCREENING,
+    placeholderData: (previousData) => previousData,
+    structuralSharing: true,
+  });
+}
+
+export function useAvgVolumePercentForSymbol(
+  params: {
+    symbol: string;
+    range?: string;
+    interval?: string;
+    lookback?: number;
+  },
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: historicalKeys.avgVolumePercentForSymbol(params.symbol, params),
+    queryFn: async () => {
+      const response = await historicalService.getAvgVolumePercentForSymbol(params);
+      if (!response.success) {
+        throw new Error(response.message || "Failed to fetch avg volume percent for symbol");
+      }
+      return response.data;
+    },
+    enabled: enabled && !!params.symbol && !!params.range && !!params.interval,
+    ...CACHE_CONFIG.SCREENING,
     placeholderData: (previousData) => previousData,
     structuralSharing: true,
   });
@@ -396,70 +527,6 @@ export function useDeleteHistorical() {
 }
 
 /**
- * Hook to delete historical records by symbol
- */
-export function useDeleteHistoricalBySymbol() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (symbol: string) => {
-      const response = await historicalService.deleteHistoricalBySymbol(symbol);
-      if (!response.success) {
-        throw new Error(response.message || "Failed to delete historical records");
-      }
-      return response.data;
-    },
-    onSuccess: (_, symbol) => {
-      // Remove from cache
-      queryClient.removeQueries({ queryKey: historicalKeys.bySymbol(symbol) });
-      // Invalidate list queries
-      queryClient.invalidateQueries({ queryKey: historicalKeys.lists() });
-    },
-  });
-}
-
-/**
- * Hook to delete historical records by symbol, range, and interval
- */
-export function useDeleteHistoricalBySymbolAndParams() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({
-      symbol,
-      range,
-      interval,
-    }: {
-      symbol: string;
-      range: string;
-      interval: string;
-    }) => {
-      const response = await historicalService.deleteHistoricalBySymbolAndParams(
-        symbol,
-        range,
-        interval
-      );
-      if (!response.success) {
-        throw new Error(response.message || "Failed to delete historical records");
-      }
-      return response.data;
-    },
-    onSuccess: (_, variables) => {
-      // Remove from cache
-      queryClient.removeQueries({
-        queryKey: historicalKeys.bySymbolAndParams(
-          variables.symbol,
-          variables.range,
-          variables.interval
-        ),
-      });
-      // Invalidate list queries
-      queryClient.invalidateQueries({ queryKey: historicalKeys.lists() });
-    },
-  });
-}
-
-/**
  * Hook to invalidate all historical queries
  */
 export function useInvalidateHistorical() {
@@ -492,27 +559,6 @@ export function usePrefetchHistoricalById() {
 }
 
 /**
- * Prefetch historical records by symbol for instant loading
- */
-export function usePrefetchHistoricalBySymbol() {
-  const queryClient = useQueryClient();
-
-  return (symbol: string) => {
-    queryClient.prefetchQuery({
-      queryKey: historicalKeys.bySymbol(symbol),
-      queryFn: async () => {
-        const response = await historicalService.getHistoricalBySymbol(symbol);
-        if (!response.success) {
-          throw new Error(response.message || "Failed to fetch historical records");
-        }
-        return response.data || [];
-      },
-      ...CACHE_CONFIG.LIST,
-    });
-  };
-}
-
-/**
  * Get cached historical data without triggering a fetch
  */
 export function useGetCachedHistorical() {
@@ -522,16 +568,8 @@ export function useGetCachedHistorical() {
     byId: (id: string): Historical | undefined => {
       return queryClient.getQueryData<Historical>(historicalKeys.detail(id));
     },
-    bySymbol: (symbol: string): Historical[] | undefined => {
-      return queryClient.getQueryData<Historical[]>(historicalKeys.bySymbol(symbol));
-    },
     list: (): Historical[] | undefined => {
       return queryClient.getQueryData<Historical[]>(historicalKeys.lists());
-    },
-    volumeMetrics: (): VolumeMetricsResult[] | undefined => {
-      return queryClient.getQueryData<VolumeMetricsResult[]>(
-        historicalKeys.volumeMetrics()
-      );
     },
   };
 }

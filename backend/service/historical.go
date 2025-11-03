@@ -421,6 +421,355 @@ func (s *HistoricalService) GetSymbolsWithHighestVolumeEver() ([]string, error) 
 	return matches, nil
 }
 
+// GetSymbolsByADR scans all symbols with the given range/interval and returns those
+// whose ADR% (Average Daily Range as percentage) falls within the specified thresholds.
+// ADR% = SMA(high-low, lookback) / close * 100
+func (s *HistoricalService) GetSymbolsByADR(rangeParam, interval string, lookback int, minADR, maxADR *float64) ([]string, error) {
+	if rangeParam == "" || interval == "" || lookback <= 0 {
+		return nil, errors.New("range, interval, and lookback (positive) are required")
+	}
+
+	// Collect distinct symbols that have records for this range/interval
+	var symbols []string
+	if err := s.db.Model(&model.Historical{}).
+		Where("range = ? AND interval = ?", rangeParam, interval).
+		Distinct("symbol").
+		Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to load symbols: %w", err)
+	}
+	if len(symbols) == 0 {
+		return []string{}, nil
+	}
+
+	matches := make([]string, 0)
+	for _, sym := range symbols {
+		// Fetch historical data for this symbol
+		var rows []model.Historical
+		if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", sym, rangeParam, interval).
+			Order("epoch ASC").
+			Find(&rows).Error; err != nil {
+			continue
+		}
+		if len(rows) == 0 {
+			continue
+		}
+
+		// Calculate ADR%: SMA of (high-low) over lookback period, then divide by last close
+		rngSeries := make([]float64, 0, len(rows))
+		for _, r := range rows {
+			rngSeries = append(rngSeries, r.High-r.Low)
+		}
+		adr := simpleMovingAverage(rngSeries, lookback)
+		last := rows[len(rows)-1]
+		if last.Close == 0 {
+			continue // skip if no valid close price
+		}
+		adrPercent := (adr / last.Close) * 100.0
+
+		// Apply filters if provided
+		matchesThreshold := true
+		if minADR != nil && adrPercent < *minADR {
+			matchesThreshold = false
+		}
+		if maxADR != nil && adrPercent > *maxADR {
+			matchesThreshold = false
+		}
+		if matchesThreshold {
+			matches = append(matches, sym)
+		}
+	}
+
+	return matches, nil
+}
+
+// GetSymbolsByATR scans all symbols with the given range/interval and returns those
+// whose ATR% (Average True Range as percentage) falls within the specified thresholds.
+// ATR% = ATR(lookback) / close * 100
+// ATR is calculated as SMA of True Range (max of: high-low, |high-prevClose|, |low-prevClose|)
+func (s *HistoricalService) GetSymbolsByATR(rangeParam, interval string, lookback int, minATR, maxATR *float64) ([]string, error) {
+	if rangeParam == "" || interval == "" || lookback <= 0 {
+		return nil, errors.New("range, interval, and lookback (positive) are required")
+	}
+
+	// Collect distinct symbols that have records for this range/interval
+	var symbols []string
+	if err := s.db.Model(&model.Historical{}).
+		Where("range = ? AND interval = ?", rangeParam, interval).
+		Distinct("symbol").
+		Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to load symbols: %w", err)
+	}
+	if len(symbols) == 0 {
+		return []string{}, nil
+	}
+
+	matches := make([]string, 0)
+	for _, sym := range symbols {
+		// Fetch historical data for this symbol
+		var rows []model.Historical
+		if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", sym, rangeParam, interval).
+			Order("epoch ASC").
+			Find(&rows).Error; err != nil {
+			continue
+		}
+		if len(rows) == 0 {
+			continue
+		}
+
+		// Calculate ATR%: ATR over lookback period, then divide by last close
+		atr := averageTrueRange(rows, lookback)
+		last := rows[len(rows)-1]
+		if last.Close == 0 {
+			continue // skip if no valid close price
+		}
+		atrPercent := (atr / last.Close) * 100.0
+
+		// Apply filters if provided
+		matchesThreshold := true
+		if minATR != nil && atrPercent < *minATR {
+			matchesThreshold = false
+		}
+		if maxATR != nil && atrPercent > *maxATR {
+			matchesThreshold = false
+		}
+		if matchesThreshold {
+			matches = append(matches, sym)
+		}
+	}
+
+	return matches, nil
+}
+
+// GetADRForSymbol calculates and returns ADR% for a specific symbol.
+// ADR% = SMA(high-low, lookback) / close * 100
+func (s *HistoricalService) GetADRForSymbol(symbol, rangeParam, interval string, lookback int) (float64, error) {
+	if symbol == "" || rangeParam == "" || interval == "" || lookback <= 0 {
+		return 0, errors.New("symbol, range, interval, and lookback (positive) are required")
+	}
+
+	var rows []model.Historical
+	if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, rangeParam, interval).
+		Order("epoch ASC").
+		Find(&rows).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch historical data: %w", err)
+	}
+	if len(rows) == 0 {
+		return 0, errors.New("no historical data found for symbol")
+	}
+
+	// Calculate ADR%: SMA of (high-low) over lookback period, then divide by last close
+	rngSeries := make([]float64, 0, len(rows))
+	for _, r := range rows {
+		rngSeries = append(rngSeries, r.High-r.Low)
+	}
+	adr := simpleMovingAverage(rngSeries, lookback)
+	last := rows[len(rows)-1]
+	if last.Close == 0 {
+		return 0, errors.New("invalid close price (zero)")
+	}
+	adrPercent := (adr / last.Close) * 100.0
+
+	return adrPercent, nil
+}
+
+// GetATRForSymbol calculates and returns ATR% for a specific symbol.
+// ATR% = ATR(lookback) / close * 100
+// ATR is calculated as SMA of True Range (max of: high-low, |high-prevClose|, |low-prevClose|)
+func (s *HistoricalService) GetATRForSymbol(symbol, rangeParam, interval string, lookback int) (float64, error) {
+	if symbol == "" || rangeParam == "" || interval == "" || lookback <= 0 {
+		return 0, errors.New("symbol, range, interval, and lookback (positive) are required")
+	}
+
+	var rows []model.Historical
+	if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, rangeParam, interval).
+		Order("epoch ASC").
+		Find(&rows).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch historical data: %w", err)
+	}
+	if len(rows) == 0 {
+		return 0, errors.New("no historical data found for symbol")
+	}
+
+	// Calculate ATR%: ATR over lookback period, then divide by last close
+	atr := averageTrueRange(rows, lookback)
+	last := rows[len(rows)-1]
+	if last.Close == 0 {
+		return 0, errors.New("invalid close price (zero)")
+	}
+	atrPercent := (atr / last.Close) * 100.0
+
+	return atrPercent, nil
+}
+
+// GetSymbolsByAvgVolumeDollars scans all symbols and returns those whose average daily
+// volume in dollars (SMA of volume*close over lookback) falls within the thresholds.
+// Volume in dollars = volume * close, then SMA over lookback, then convert to millions ($M)
+func (s *HistoricalService) GetSymbolsByAvgVolumeDollars(rangeParam, interval string, lookback int, minVolDollarsM, maxVolDollarsM *float64) ([]string, error) {
+	if rangeParam == "" || interval == "" || lookback <= 0 {
+		return nil, errors.New("range, interval, and lookback (positive) are required")
+	}
+
+	var symbols []string
+	if err := s.db.Model(&model.Historical{}).
+		Where("range = ? AND interval = ?", rangeParam, interval).
+		Distinct("symbol").
+		Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to load symbols: %w", err)
+	}
+	if len(symbols) == 0 {
+		return []string{}, nil
+	}
+
+	matches := make([]string, 0)
+	for _, sym := range symbols {
+		var rows []model.Historical
+		if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", sym, rangeParam, interval).
+			Order("epoch ASC").
+			Find(&rows).Error; err != nil {
+			continue
+		}
+		if len(rows) == 0 {
+			continue
+		}
+
+		// Calculate average volume in dollars: SMA(volume * close, lookback) / 1M
+		volDollarSeries := make([]float64, 0, len(rows))
+		for _, r := range rows {
+			volDollarSeries = append(volDollarSeries, float64(r.Volume)*r.Close)
+		}
+		avgVolDollarsM := simpleMovingAverage(volDollarSeries, lookback) / 1_000_000.0
+
+		matchesThreshold := true
+		if minVolDollarsM != nil && avgVolDollarsM < *minVolDollarsM {
+			matchesThreshold = false
+		}
+		if maxVolDollarsM != nil && avgVolDollarsM > *maxVolDollarsM {
+			matchesThreshold = false
+		}
+		if matchesThreshold {
+			matches = append(matches, sym)
+		}
+	}
+
+	return matches, nil
+}
+
+// GetSymbolsByAvgVolumePercent scans all symbols and returns those whose current volume
+// as a percentage of average volume (SMA over lookback) falls within the thresholds.
+// Volume % = (current volume / SMA(volume, lookback)) * 100
+func (s *HistoricalService) GetSymbolsByAvgVolumePercent(rangeParam, interval string, lookback int, minVolPercent, maxVolPercent *float64) ([]string, error) {
+	if rangeParam == "" || interval == "" || lookback <= 0 {
+		return nil, errors.New("range, interval, and lookback (positive) are required")
+	}
+
+	var symbols []string
+	if err := s.db.Model(&model.Historical{}).
+		Where("range = ? AND interval = ?", rangeParam, interval).
+		Distinct("symbol").
+		Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to load symbols: %w", err)
+	}
+	if len(symbols) == 0 {
+		return []string{}, nil
+	}
+
+	matches := make([]string, 0)
+	for _, sym := range symbols {
+		var rows []model.Historical
+		if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", sym, rangeParam, interval).
+			Order("epoch ASC").
+			Find(&rows).Error; err != nil {
+			continue
+		}
+		if len(rows) == 0 {
+			continue
+		}
+
+		// Calculate volume %: (current volume / SMA(volume, lookback)) * 100
+		volumes := make([]float64, 0, len(rows))
+		for _, r := range rows {
+			volumes = append(volumes, float64(r.Volume))
+		}
+		avgVolume := simpleMovingAverage(volumes, lookback)
+		if avgVolume == 0 {
+			continue // skip if average is zero
+		}
+		last := rows[len(rows)-1]
+		volPercent := (float64(last.Volume) / avgVolume) * 100.0
+
+		matchesThreshold := true
+		if minVolPercent != nil && volPercent < *minVolPercent {
+			matchesThreshold = false
+		}
+		if maxVolPercent != nil && volPercent > *maxVolPercent {
+			matchesThreshold = false
+		}
+		if matchesThreshold {
+			matches = append(matches, sym)
+		}
+	}
+
+	return matches, nil
+}
+
+// GetAvgVolumeDollarsForSymbol calculates and returns average daily volume in dollars (millions)
+// for a specific symbol. Volume $ = SMA(volume * close, lookback) / 1,000,000
+func (s *HistoricalService) GetAvgVolumeDollarsForSymbol(symbol, rangeParam, interval string, lookback int) (float64, error) {
+	if symbol == "" || rangeParam == "" || interval == "" || lookback <= 0 {
+		return 0, errors.New("symbol, range, interval, and lookback (positive) are required")
+	}
+
+	var rows []model.Historical
+	if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, rangeParam, interval).
+		Order("epoch ASC").
+		Find(&rows).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch historical data: %w", err)
+	}
+	if len(rows) == 0 {
+		return 0, errors.New("no historical data found for symbol")
+	}
+
+	volDollarSeries := make([]float64, 0, len(rows))
+	for _, r := range rows {
+		volDollarSeries = append(volDollarSeries, float64(r.Volume)*r.Close)
+	}
+	avgVolDollarsM := simpleMovingAverage(volDollarSeries, lookback) / 1_000_000.0
+
+	return avgVolDollarsM, nil
+}
+
+// GetAvgVolumePercentForSymbol calculates and returns current volume as a percentage
+// of average volume for a specific symbol. Volume % = (current volume / SMA(volume, lookback)) * 100
+func (s *HistoricalService) GetAvgVolumePercentForSymbol(symbol, rangeParam, interval string, lookback int) (float64, error) {
+	if symbol == "" || rangeParam == "" || interval == "" || lookback <= 0 {
+		return 0, errors.New("symbol, range, interval, and lookback (positive) are required")
+	}
+
+	var rows []model.Historical
+	if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, rangeParam, interval).
+		Order("epoch ASC").
+		Find(&rows).Error; err != nil {
+		return 0, fmt.Errorf("failed to fetch historical data: %w", err)
+	}
+	if len(rows) == 0 {
+		return 0, errors.New("no historical data found for symbol")
+	}
+
+	volumes := make([]float64, 0, len(rows))
+	for _, r := range rows {
+		volumes = append(volumes, float64(r.Volume))
+	}
+	avgVolume := simpleMovingAverage(volumes, lookback)
+	if avgVolume == 0 {
+		return 0, errors.New("average volume is zero")
+	}
+
+	last := rows[len(rows)-1]
+	volPercent := (float64(last.Volume) / avgVolume) * 100.0
+
+	return volPercent, nil
+}
+
 // CreateHistorical creates a new historical record
 func (s *HistoricalService) CreateHistorical(historical *model.Historical) error {
 	if historical == nil {

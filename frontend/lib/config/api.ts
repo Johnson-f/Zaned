@@ -10,6 +10,107 @@ export const API_ENDPOINTS = {
   // Public routes
   HEALTH: `${API_BASE_URL}/api/health`,
 
+  // Public screening endpoints (no authentication required)
+  SCREENING: {
+    // Inside day detection
+    INSIDE_DAY: `${API_BASE_URL}/api/inside-day`,
+
+    // Highest volume detection
+    HIGH_VOLUME_QUARTER: `${API_BASE_URL}/api/high-volume-quarter`,
+    HIGH_VOLUME_YEAR: `${API_BASE_URL}/api/high-volume-year`,
+    HIGH_VOLUME_EVER: `${API_BASE_URL}/api/high-volume-ever`,
+
+    // ADR (Average Daily Range) screening
+    ADR_SCREEN: (range?: string, interval?: string, lookback?: number, minAdr?: number, maxAdr?: number) => {
+      const params = new URLSearchParams();
+      if (range) params.append("range", range);
+      if (interval) params.append("interval", interval);
+      if (lookback) params.append("lookback", lookback.toString());
+      if (minAdr !== undefined) params.append("min_adr", minAdr.toString());
+      if (maxAdr !== undefined) params.append("max_adr", maxAdr.toString());
+      const query = params.toString();
+      return `${API_BASE_URL}/api/adr-screen${query ? `?${query}` : ""}`;
+    },
+    ADR: (symbol: string, range?: string, interval?: string, lookback?: number) => {
+      const params = new URLSearchParams();
+      params.append("symbol", symbol);
+      if (range) params.append("range", range);
+      if (interval) params.append("interval", interval);
+      if (lookback) params.append("lookback", lookback.toString());
+      return `${API_BASE_URL}/api/adr?${params.toString()}`;
+    },
+
+    // ATR (Average True Range) screening
+    ATR_SCREEN: (range?: string, interval?: string, lookback?: number, minAtr?: number, maxAtr?: number) => {
+      const params = new URLSearchParams();
+      if (range) params.append("range", range);
+      if (interval) params.append("interval", interval);
+      if (lookback) params.append("lookback", lookback.toString());
+      if (minAtr !== undefined) params.append("min_atr", minAtr.toString());
+      if (maxAtr !== undefined) params.append("max_atr", maxAtr.toString());
+      const query = params.toString();
+      return `${API_BASE_URL}/api/atr-screen${query ? `?${query}` : ""}`;
+    },
+    ATR: (symbol: string, range?: string, interval?: string, lookback?: number) => {
+      const params = new URLSearchParams();
+      params.append("symbol", symbol);
+      if (range) params.append("range", range);
+      if (interval) params.append("interval", interval);
+      if (lookback) params.append("lookback", lookback.toString());
+      return `${API_BASE_URL}/api/atr?${params.toString()}`;
+    },
+
+    // Average volume in dollars screening
+    AVG_VOLUME_DOLLARS_SCREEN: (range?: string, interval?: string, lookback?: number, minVolDollarsM?: number, maxVolDollarsM?: number) => {
+      const params = new URLSearchParams();
+      if (range) params.append("range", range);
+      if (interval) params.append("interval", interval);
+      if (lookback) params.append("lookback", lookback.toString());
+      if (minVolDollarsM !== undefined) params.append("min_vol_dollars_m", minVolDollarsM.toString());
+      if (maxVolDollarsM !== undefined) params.append("max_vol_dollars_m", maxVolDollarsM.toString());
+      const query = params.toString();
+      return `${API_BASE_URL}/api/avg-volume-dollars-screen${query ? `?${query}` : ""}`;
+    },
+    AVG_VOLUME_DOLLARS: (symbol: string, range?: string, interval?: string, lookback?: number) => {
+      const params = new URLSearchParams();
+      params.append("symbol", symbol);
+      if (range) params.append("range", range);
+      if (interval) params.append("interval", interval);
+      if (lookback) params.append("lookback", lookback.toString());
+      return `${API_BASE_URL}/api/avg-volume-dollars?${params.toString()}`;
+    },
+
+    // Average volume in percent screening
+    AVG_VOLUME_PERCENT_SCREEN: (range?: string, interval?: string, lookback?: number, minVolPercent?: number, maxVolPercent?: number) => {
+      const params = new URLSearchParams();
+      if (range) params.append("range", range);
+      if (interval) params.append("interval", interval);
+      if (lookback) params.append("lookback", lookback.toString());
+      if (minVolPercent !== undefined) params.append("min_vol_percent", minVolPercent.toString());
+      if (maxVolPercent !== undefined) params.append("max_vol_percent", maxVolPercent.toString());
+      const query = params.toString();
+      return `${API_BASE_URL}/api/avg-volume-percent-screen${query ? `?${query}` : ""}`;
+    },
+    AVG_VOLUME_PERCENT: (symbol: string, range?: string, interval?: string, lookback?: number) => {
+      const params = new URLSearchParams();
+      params.append("symbol", symbol);
+      if (range) params.append("range", range);
+      if (interval) params.append("interval", interval);
+      if (lookback) params.append("lookback", lookback.toString());
+      return `${API_BASE_URL}/api/avg-volume-percent?${params.toString()}`;
+    },
+  },
+
+  // Admin endpoints (public, no authentication)
+  ADMIN: {
+    INGEST_HISTORICALS: (concurrency?: number) => {
+      const params = new URLSearchParams();
+      if (concurrency) params.append("concurrency", concurrency.toString());
+      const query = params.toString();
+      return `${API_BASE_URL}/api/admin/ingest/historicals${query ? `?${query}` : ""}`;
+    },
+  },
+
   // Protected routes (require JWT authentication)
   SCREENER: {
     BASE: `${API_BASE_URL}/api/protected/screener`,
@@ -28,20 +129,7 @@ export const API_ENDPOINTS = {
   HISTORICAL: {
     BASE: `${API_BASE_URL}/api/protected/historical`,
     BY_ID: (id: string) => `${API_BASE_URL}/api/protected/historical/${id}`,
-    BY_SYMBOL: (symbol: string) =>
-      `${API_BASE_URL}/api/protected/historical/symbol/${symbol}`,
-    BY_SYMBOL_AND_PARAMS: (symbol: string, range: string, interval: string) =>
-      `${API_BASE_URL}/api/protected/historical/symbol/${symbol}/params?range=${range}&interval=${interval}`,
-    FILTER: `${API_BASE_URL}/api/protected/historical/filter`,
-    COUNT: `${API_BASE_URL}/api/protected/historical/count`,
-    COUNT_BY_SYMBOL: (symbol: string) =>
-      `${API_BASE_URL}/api/protected/historical/count/${symbol}`,
-    VOLUME_METRICS: `${API_BASE_URL}/api/protected/historical/volume-metrics`,
     BATCH: `${API_BASE_URL}/api/protected/historical/batch`,
-    DELETE_BY_SYMBOL: (symbol: string) =>
-      `${API_BASE_URL}/api/protected/historical/symbol/${symbol}`,
-    DELETE_BY_SYMBOL_AND_PARAMS: (symbol: string, range: string, interval: string) =>
-      `${API_BASE_URL}/api/protected/historical/symbol/${symbol}/params?range=${range}&interval=${interval}`,
   },
 } as const;
 

@@ -20,47 +20,36 @@ export interface Historical {
   deleted_at?: string | null;
 }
 
-export interface HistoricalFilterOptions {
-  symbol?: string;
-  minEpoch?: number;
-  maxEpoch?: number;
-  range?: string;
-  interval?: string;
-  minOpen?: number;
-  maxOpen?: number;
-  minHigh?: number;
-  maxHigh?: number;
-  minLow?: number;
-  maxLow?: number;
-  minClose?: number;
-  maxClose?: number;
-  minVolume?: number;
-  maxVolume?: number;
+// Generic symbols response used by screening list endpoints
+export interface SymbolsResponse<Params = Record<string, unknown>> {
+  symbols: string[];
+  count: number;
+  params?: Params;
 }
 
-export interface HistoricalSortOptions {
-  field: string; // "symbol", "epoch", "open", "high", "low", "close", "volume", "created_at"
-  direction: "asc" | "desc";
-}
-
-export interface HistoricalPaginationOptions {
-  page: number; // 1-indexed page number
-  limit: number; // Number of records per page
-}
-
-export interface HistoricalQueryResult {
-  data: Historical[];
-  page: number;
-  limit: number;
-  total: number;
-  total_pages: number;
-}
-
-export interface VolumeMetricsResult {
+// Single-symbol metric responses
+export interface AdrPercentResponse<Params = Record<string, unknown>> {
   symbol: string;
-  highest_volume_in_year: number;
-  highest_volume_in_quarter: number;
-  highest_volume_ever: number;
+  adr_percent: number;
+  params: Params;
+}
+
+export interface AtrPercentResponse<Params = Record<string, unknown>> {
+  symbol: string;
+  atr_percent: number;
+  params: Params;
+}
+
+export interface AvgVolumeDollarsResponse<Params = Record<string, unknown>> {
+  symbol: string;
+  avg_vol_dollars_m: number; // in millions
+  params: Params;
+}
+
+export interface AvgVolumePercentResponse<Params = Record<string, unknown>> {
+  symbol: string;
+  vol_percent: number; // current volume as % of average
+  params: Params;
 }
 
 export interface ApiError {
