@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+    "gorm.io/gorm/clause"
 )
 
 // HistoricalService contains business logic for historical price operations
@@ -324,27 +325,22 @@ func (s *HistoricalService) UpsertHistoricalBatch(historical []model.Historical)
 		return errors.New("historical records cannot be empty")
 	}
 
-	// Use transaction for batch upsert
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		for _, h := range historical {
-			result := tx.Where("symbol = ? AND epoch = ? AND range = ? AND interval = ?",
-				h.Symbol, h.Epoch, h.Range, h.Interval).
-				Assign(map[string]interface{}{
-					"open":      h.Open,
-					"high":      h.High,
-					"low":       h.Low,
-					"close":     h.Close,
-					"adj_close": h.AdjClose,
-					"volume":    h.Volume,
-				}).
-				FirstOrCreate(&h)
-
-			if result.Error != nil {
-				return fmt.Errorf("failed to upsert historical record: %w", result.Error)
-			}
-		}
-		return nil
-	})
+    // Prefer bulk upsert using ON CONFLICT for performance
+    // Requires unique index on (symbol, epoch, range, interval)
+    return s.db.Clauses(clause.OnConflict{
+        Columns: []clause.Column{
+            {Name: "symbol"}, {Name: "epoch"}, {Name: "range"}, {Name: "interval"},
+        },
+        DoUpdates: clause.Assignments(map[string]interface{}{
+            "open":      gorm.Expr("excluded.open"),
+            "high":      gorm.Expr("excluded.high"),
+            "low":       gorm.Expr("excluded.low"),
+            "close":     gorm.Expr("excluded.close"),
+            "adj_close": gorm.Expr("excluded.adj_close"),
+            "volume":    gorm.Expr("excluded.volume"),
+            "updated_at": gorm.Expr("NOW()"),
+        }),
+    }).CreateInBatches(historical, 100).Error
 }
 
 // UpdateHistorical updates an existing historical record

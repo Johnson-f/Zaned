@@ -1,10 +1,12 @@
 package routes
 
 import (
+	"context"
 	"screener/backend/model"
 	"screener/backend/service"
 	"screener/backend/supabase"
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -25,6 +27,29 @@ func SetupRoutes(app *fiber.App) {
 				"message": "Server is running",
 			})
 		})
+
+		// Admin ingestion endpoint (public): trigger screener+historicals fetch for all symbols
+		public.Post("/admin/ingest/historicals", func(c *fiber.Ctx) error {
+			concurrency, _ := strconv.Atoi(c.Query("concurrency", "8"))
+			fetcher := service.NewFetcherService()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+
+			jobID, err := fetcher.RunIngestion(ctx, concurrency)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+				"success":     true,
+				"job_id":      jobID,
+				"accepted_at": time.Now().UTC().Format(time.RFC3339),
+			})
+		})
 	}
 
 	// Protected routes (require JWT authentication)
@@ -32,6 +57,7 @@ func SetupRoutes(app *fiber.App) {
 	// Apply JWT middleware to all protected routes
 	protected.Use(supabase.JWTAuthMiddleware())
 	{
+
 		// Get all screener data (read-only)
 		protected.Get("/screener", func(c *fiber.Ctx) error {
 			screeners, err := screenerService.GetAllScreeners()

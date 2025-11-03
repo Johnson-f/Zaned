@@ -9,11 +9,11 @@ import (
 
 // Historical represents historical stock price data in the system
 type Historical struct {
-	ID        uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Symbol    string         `gorm:"type:varchar(20);not null;index" json:"symbol"`
-	Epoch     int64          `gorm:"type:bigint;not null;index" json:"epoch"`
-	Range     string         `gorm:"type:varchar(10);not null;column:range" json:"range"`
-	Interval  string         `gorm:"type:varchar(10);not null;column:interval" json:"interval"`
+    ID        uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+    Symbol    string         `gorm:"type:varchar(20);not null;index;uniqueIndex:uniq_hist_symbol_epoch_range_interval" json:"symbol"`
+    Epoch     int64          `gorm:"type:bigint;not null;index;uniqueIndex:uniq_hist_symbol_epoch_range_interval" json:"epoch"`
+    Range     string         `gorm:"type:varchar(10);not null;column:range;uniqueIndex:uniq_hist_symbol_epoch_range_interval" json:"range"`
+    Interval  string         `gorm:"type:varchar(10);not null;column:interval;uniqueIndex:uniq_hist_symbol_epoch_range_interval" json:"interval"`
 	Open      float64        `gorm:"type:decimal(15,4);not null" json:"open"`
 	High      float64        `gorm:"type:decimal(15,4);not null" json:"high"`
 	Low       float64        `gorm:"type:decimal(15,4);not null" json:"low"`
