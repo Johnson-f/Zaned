@@ -1,7 +1,3 @@
--- Add unique constraint on symbol column to prevent duplicates
--- This ensures each stock symbol can only exist once in the table
-CREATE UNIQUE INDEX IF NOT EXISTS idx_screener_symbol_unique ON screener(symbol);
-
 -- Insert stock symbols into screener table
 -- All price and volume fields are set to 0 as placeholders to be updated later
 -- Uses ON CONFLICT DO NOTHING to prevent duplicates if migration runs multiple times

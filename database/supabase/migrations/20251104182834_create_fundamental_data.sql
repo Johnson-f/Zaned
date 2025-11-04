@@ -54,5 +54,5 @@ CREATE TRIGGER update_fundamental_data_updated_at
     EXECUTE FUNCTION update_fundamental_data_updated_at();
 
 -- Enable real-time subscription for fundamental_data table
-ALTER PUBLICATION supabase_realtime ADD TABLE fundamental_data;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE fundamental_data;
 

@@ -76,5 +76,5 @@ CREATE TRIGGER update_company_info_updated_at
     EXECUTE FUNCTION update_company_info_updated_at();
 
 -- Enable real-time subscription for company_info table
-ALTER PUBLICATION supabase_realtime ADD TABLE company_info;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE company_info;
 

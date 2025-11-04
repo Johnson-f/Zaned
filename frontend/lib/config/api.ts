@@ -101,6 +101,68 @@ export const API_ENDPOINTS = {
     },
   },
 
+  // Company Info endpoints (public, read-only)
+  COMPANY_INFO: {
+    BASE: `${API_BASE_URL}/api/company-info`,
+    BY_SYMBOL: (symbol: string) => `${API_BASE_URL}/api/company-info/${symbol}`,
+    BY_SYMBOLS: `${API_BASE_URL}/api/company-info/symbols`,
+    SEARCH: (query: string) => `${API_BASE_URL}/api/company-info/search?q=${encodeURIComponent(query)}`,
+    BY_SECTOR: (sector: string) => `${API_BASE_URL}/api/company-info/sector/${encodeURIComponent(sector)}`,
+    BY_INDUSTRY: (industry: string) => `${API_BASE_URL}/api/company-info/industry/${encodeURIComponent(industry)}`,
+  },
+
+  // Fundamental Data endpoints (public, read-only)
+  FUNDAMENTAL_DATA: {
+    BASE: `${API_BASE_URL}/api/fundamental-data`,
+    BY_SYMBOL: (symbol: string) => `${API_BASE_URL}/api/fundamental-data/symbol/${encodeURIComponent(symbol)}`,
+    BY_SYMBOL_AND_TYPE: (symbol: string, statementType: string) =>
+      `${API_BASE_URL}/api/fundamental-data/symbol/${encodeURIComponent(symbol)}/type/${encodeURIComponent(statementType)}`,
+    BY_SYMBOL_TYPE_AND_FREQUENCY: (symbol: string, statementType: string, frequency: string) =>
+      `${API_BASE_URL}/api/fundamental-data/symbol/${encodeURIComponent(symbol)}/type/${encodeURIComponent(statementType)}/frequency/${encodeURIComponent(frequency)}`,
+    BY_STATEMENT_TYPE: (statementType: string) =>
+      `${API_BASE_URL}/api/fundamental-data/type/${encodeURIComponent(statementType)}`,
+    BY_FREQUENCY: (frequency: string) =>
+      `${API_BASE_URL}/api/fundamental-data/frequency/${encodeURIComponent(frequency)}`,
+    SEARCH: (query: string) =>
+      `${API_BASE_URL}/api/fundamental-data/search?q=${encodeURIComponent(query)}`,
+    METRICS: (symbol: string, statementType?: string, frequency?: string) => {
+      const params = new URLSearchParams();
+      params.append("symbol", symbol);
+      if (statementType) params.append("statement_type", statementType);
+      if (frequency) params.append("frequency", frequency);
+      return `${API_BASE_URL}/api/fundamental-data/metrics?${params.toString()}`;
+    },
+    REVENUE_GROWTH: (statementType?: string, frequency?: string, minQoQGrowth?: number, maxQoQGrowth?: number, minYoYGrowth?: number, maxYoYGrowth?: number) => {
+      const params = new URLSearchParams();
+      if (statementType) params.append("statement_type", statementType);
+      if (frequency) params.append("frequency", frequency);
+      if (minQoQGrowth !== undefined) params.append("min_qoq_growth", minQoQGrowth.toString());
+      if (maxQoQGrowth !== undefined) params.append("max_qoq_growth", maxQoQGrowth.toString());
+      if (minYoYGrowth !== undefined) params.append("min_yoy_growth", minYoYGrowth.toString());
+      if (maxYoYGrowth !== undefined) params.append("max_yoy_growth", maxYoYGrowth.toString());
+      return `${API_BASE_URL}/api/fundamental-data/revenue-growth?${params.toString()}`;
+    },
+    EPS_FILTER: (statementType?: string, frequency?: string, date?: string, minEPS?: number, maxEPS?: number) => {
+      const params = new URLSearchParams();
+      if (statementType) params.append("statement_type", statementType);
+      if (frequency) params.append("frequency", frequency);
+      if (date) params.append("date", date);
+      if (minEPS !== undefined) params.append("min_eps", minEPS.toString());
+      if (maxEPS !== undefined) params.append("max_eps", maxEPS.toString());
+      return `${API_BASE_URL}/api/fundamental-data/eps-filter?${params.toString()}`;
+    },
+    MARGIN_FILTER: (marginType?: string, statementType?: string, frequency?: string, date?: string, minMargin?: number, maxMargin?: number) => {
+      const params = new URLSearchParams();
+      if (marginType) params.append("margin_type", marginType);
+      if (statementType) params.append("statement_type", statementType);
+      if (frequency) params.append("frequency", frequency);
+      if (date) params.append("date", date);
+      if (minMargin !== undefined) params.append("min_margin", minMargin.toString());
+      if (maxMargin !== undefined) params.append("max_margin", maxMargin.toString());
+      return `${API_BASE_URL}/api/fundamental-data/margin-filter?${params.toString()}`;
+    },
+  },
+
   // Admin endpoints (public, no authentication)
   ADMIN: {
     INGEST_HISTORICALS: (concurrency?: number) => {
@@ -110,6 +172,8 @@ export const API_ENDPOINTS = {
       return `${API_BASE_URL}/api/admin/ingest/historicals${query ? `?${query}` : ""}`;
     },
     UPDATE_WATCHLIST_PRICES: `${API_BASE_URL}/api/admin/watchlist/update-prices`,
+    INGEST_COMPANY_INFO: `${API_BASE_URL}/api/admin/ingest/company-info`,
+    INGEST_FUNDAMENTAL_DATA: `${API_BASE_URL}/api/admin/ingest/fundamental-data`,
   },
 
   // Protected routes (require JWT authentication)
