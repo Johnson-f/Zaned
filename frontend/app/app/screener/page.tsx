@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { ScreenerTest } from "@/components/screener-test";
 
 export default async function ScreenerPage() {
   const supabase = await createClient();
@@ -18,7 +17,7 @@ export default async function ScreenerPage() {
           Test component using TanStack Query hooks to fetch data from the backend.
         </p>
       </div>
-      <ScreenerTest />
+
     </div>
   );
 }

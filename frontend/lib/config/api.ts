@@ -109,6 +109,7 @@ export const API_ENDPOINTS = {
       const query = params.toString();
       return `${API_BASE_URL}/api/admin/ingest/historicals${query ? `?${query}` : ""}`;
     },
+    UPDATE_WATCHLIST_PRICES: `${API_BASE_URL}/api/admin/watchlist/update-prices`,
   },
 
   // Protected routes (require JWT authentication)
@@ -130,6 +131,25 @@ export const API_ENDPOINTS = {
     BASE: `${API_BASE_URL}/api/protected/historical`,
     BY_ID: (id: string) => `${API_BASE_URL}/api/protected/historical/${id}`,
     BATCH: `${API_BASE_URL}/api/protected/historical/batch`,
+  },
+  WATCHLIST: {
+    // Watchlist CRUD
+    BASE: `${API_BASE_URL}/api/protected/watchlist`,
+    BY_ID: (id: string) => `${API_BASE_URL}/api/protected/watchlist/${id}`,
+    
+    // Watchlist Items
+    ITEMS: (watchlistId: string) => `${API_BASE_URL}/api/protected/watchlist/${watchlistId}/items`,
+    ITEM_BY_ID: (id: string) => `${API_BASE_URL}/api/protected/watchlist/item/${id}`,
+    ADD_ITEM: (watchlistId: string) => `${API_BASE_URL}/api/protected/watchlist/${watchlistId}/items`,
+    UPDATE_ITEM: (id: string) => `${API_BASE_URL}/api/protected/watchlist/item/${id}`,
+    DELETE_ITEM: (id: string) => `${API_BASE_URL}/api/protected/watchlist/item/${id}`,
+    
+    // Starred items
+    TOGGLE_STAR: (id: string) => `${API_BASE_URL}/api/protected/watchlist/item/${id}/star`,
+    STARRED: `${API_BASE_URL}/api/protected/watchlist/starred`,
+    
+    // Batch operations
+    BATCH_UPDATE_ITEMS: `${API_BASE_URL}/api/protected/watchlist/items/batch`,
   },
 } as const;
 

@@ -289,6 +289,10 @@ func Migrate(models ...interface{}) error {
 	var stocksMigrated bool
 	// Track if we're migrating the historical table
 	var historicalMigrated bool
+	// Track if we're migrating the company_info table
+	var companyInfoMigrated bool
+	// Track if we're migrating the fundamental_data table
+	var fundamentalDataMigrated bool
 
 	// Perform migrations for each model
 	for _, model := range models {
@@ -309,6 +313,16 @@ func Migrate(models ...interface{}) error {
 		// Check if this is the historical table
 		if tableName == "historical" {
 			historicalMigrated = true
+		}
+
+		// Check if this is the company_info table
+		if tableName == "company_info" {
+			companyInfoMigrated = true
+		}
+
+		// Check if this is the fundamental_data table
+		if tableName == "fundamental_data" {
+			fundamentalDataMigrated = true
 		}
 
 		// Check if table exists before migration
@@ -372,6 +386,22 @@ func Migrate(models ...interface{}) error {
 	if historicalMigrated {
 		if err := setupHistoricalPolicies(); err != nil {
 			log.Printf("Warning: Failed to setup historical policies: %v", err)
+			// Don't fail migration if policy setup fails, but log it
+		}
+	}
+
+	// Apply RLS policies for company_info table if it was migrated
+	if companyInfoMigrated {
+		if err := setupCompanyInfoPolicies(); err != nil {
+			log.Printf("Warning: Failed to setup company_info policies: %v", err)
+			// Don't fail migration if policy setup fails, but log it
+		}
+	}
+
+	// Apply RLS policies for fundamental_data table if it was migrated
+	if fundamentalDataMigrated {
+		if err := setupFundamentalDataPolicies(); err != nil {
+			log.Printf("Warning: Failed to setup fundamental_data policies: %v", err)
 			// Don't fail migration if policy setup fails, but log it
 		}
 	}
@@ -556,6 +586,128 @@ func setupSchemaVersionPolicies() error {
 	}
 
 	log.Println("Successfully configured RLS policies for schema_versions system table")
+	return nil
+}
+
+// setupCompanyInfoPolicies sets up RLS policies for the company_info table (read-only)
+func setupCompanyInfoPolicies() error {
+	if DB == nil {
+		return fmt.Errorf("database connection not initialized")
+	}
+
+	// Enable Row Level Security on company_info table
+	if err := DB.Exec(`ALTER TABLE IF EXISTS company_info ENABLE ROW LEVEL SECURITY`).Error; err != nil {
+		return fmt.Errorf("failed to enable RLS on company_info table: %w", err)
+	}
+
+	// Revoke all privileges from anon and authenticated roles
+	// This ensures users can't insert, update, or delete
+	if err := DB.Exec(`REVOKE ALL ON TABLE company_info FROM anon, authenticated`).Error; err != nil {
+		// Log but don't fail - this might error if privileges don't exist
+		log.Printf("Note: Could not revoke privileges (may not exist): %v", err)
+	}
+
+	// Grant SELECT permission to both anon and authenticated users (read-only access for all)
+	if err := DB.Exec(`GRANT SELECT ON TABLE company_info TO anon, authenticated`).Error; err != nil {
+		return fmt.Errorf("failed to grant SELECT permission: %w", err)
+	}
+
+	// Drop existing policies if they exist
+	if err := DB.Exec(`
+		DROP POLICY IF EXISTS "Allow select on company info" ON company_info;
+	`).Error; err != nil {
+		log.Printf("Note: Could not drop existing policies: %v", err)
+	}
+
+	// Create read-only policy for all users (anon and authenticated)
+	// No policies for INSERT/UPDATE/DELETE means they are automatically blocked by RLS
+	if err := DB.Exec(`
+		CREATE POLICY "Allow select on company info"
+		ON company_info
+		FOR SELECT
+		USING (true)
+	`).Error; err != nil {
+		return fmt.Errorf("failed to create read-only policy: %w", err)
+	}
+
+	// Note: INSERT, UPDATE, and DELETE are automatically blocked because:
+	// 1. REVOKE ALL removes all privileges
+	// 2. GRANT SELECT only grants SELECT (not INSERT/UPDATE/DELETE)
+	// 3. No RLS policies exist for INSERT/UPDATE/DELETE (default deny)
+
+	// Set replica identity to FULL for Realtime to work properly
+	if err := DB.Exec(`ALTER TABLE company_info REPLICA IDENTITY FULL`).Error; err != nil {
+		return fmt.Errorf("failed to set replica identity: %w", err)
+	}
+
+	// Add company_info table to Supabase Realtime publication
+	if err := DB.Exec(`ALTER PUBLICATION supabase_realtime ADD TABLE company_info`).Error; err != nil {
+		// This might fail if table is already in publication or publication doesn't exist
+		log.Printf("Note: Could not add company_info to Realtime publication (may already exist or Realtime not enabled): %v", err)
+	}
+
+	log.Println("Successfully configured RLS policies and Realtime for company_info table")
+	return nil
+}
+
+// setupFundamentalDataPolicies sets up RLS policies for the fundamental_data table (read-only)
+func setupFundamentalDataPolicies() error {
+	if DB == nil {
+		return fmt.Errorf("database connection not initialized")
+	}
+
+	// Enable Row Level Security on fundamental_data table
+	if err := DB.Exec(`ALTER TABLE IF EXISTS fundamental_data ENABLE ROW LEVEL SECURITY`).Error; err != nil {
+		return fmt.Errorf("failed to enable RLS on fundamental_data table: %w", err)
+	}
+
+	// Revoke all privileges from anon and authenticated roles
+	// This ensures users can't insert, update, or delete
+	if err := DB.Exec(`REVOKE ALL ON TABLE fundamental_data FROM anon, authenticated`).Error; err != nil {
+		// Log but don't fail - this might error if privileges don't exist
+		log.Printf("Note: Could not revoke privileges (may not exist): %v", err)
+	}
+
+	// Grant SELECT permission to both anon and authenticated users (read-only access for all)
+	if err := DB.Exec(`GRANT SELECT ON TABLE fundamental_data TO anon, authenticated`).Error; err != nil {
+		return fmt.Errorf("failed to grant SELECT permission: %w", err)
+	}
+
+	// Drop existing policies if they exist
+	if err := DB.Exec(`
+		DROP POLICY IF EXISTS "Allow select on fundamental data" ON fundamental_data;
+	`).Error; err != nil {
+		log.Printf("Note: Could not drop existing policies: %v", err)
+	}
+
+	// Create read-only policy for all users (anon and authenticated)
+	// No policies for INSERT/UPDATE/DELETE means they are automatically blocked by RLS
+	if err := DB.Exec(`
+		CREATE POLICY "Allow select on fundamental data"
+		ON fundamental_data
+		FOR SELECT
+		USING (true)
+	`).Error; err != nil {
+		return fmt.Errorf("failed to create read-only policy: %w", err)
+	}
+
+	// Note: INSERT, UPDATE, and DELETE are automatically blocked because:
+	// 1. REVOKE ALL removes all privileges
+	// 2. GRANT SELECT only grants SELECT (not INSERT/UPDATE/DELETE)
+	// 3. No RLS policies exist for INSERT/UPDATE/DELETE (default deny)
+
+	// Set replica identity to FULL for Realtime to work properly
+	if err := DB.Exec(`ALTER TABLE fundamental_data REPLICA IDENTITY FULL`).Error; err != nil {
+		return fmt.Errorf("failed to set replica identity: %w", err)
+	}
+
+	// Add fundamental_data table to Supabase Realtime publication
+	if err := DB.Exec(`ALTER PUBLICATION supabase_realtime ADD TABLE fundamental_data`).Error; err != nil {
+		// This might fail if table is already in publication or publication doesn't exist
+		log.Printf("Note: Could not add fundamental_data to Realtime publication (may already exist or Realtime not enabled): %v", err)
+	}
+
+	log.Println("Successfully configured RLS policies and Realtime for fundamental_data table")
 	return nil
 }
 

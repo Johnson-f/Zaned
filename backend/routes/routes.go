@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 // SetupRoutes configures all routes for the application
@@ -16,6 +17,9 @@ func SetupRoutes(app *fiber.App) {
 	// Initialize services
 	screenerService := service.NewScreenerService()
 	historicalService := service.NewHistoricalService()
+	watchlistService := service.NewWatchlistService()
+	companyInfoService := service.NewCompanyInfoService()
+	fundamentalDataService := service.NewFundamentalDataService()
 
 	// Public routes
 	public := app.Group("/api")
@@ -36,6 +40,72 @@ func SetupRoutes(app *fiber.App) {
 			defer cancel()
 
 			jobID, err := fetcher.RunIngestion(ctx, concurrency)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+				"success":     true,
+				"job_id":      jobID,
+				"accepted_at": time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		// Watchlist price update endpoint (public): trigger price updates for all watchlist items
+		public.Post("/admin/watchlist/update-prices", func(c *fiber.Ctx) error {
+			fetcher := service.NewFetcherService()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			jobID, err := fetcher.RunWatchlistPriceUpdate(ctx)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+				"success":     true,
+				"job_id":      jobID,
+				"accepted_at": time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		// Company info ingestion endpoint (public): trigger company info fetch for all screener symbols
+		public.Post("/admin/ingest/company-info", func(c *fiber.Ctx) error {
+			fetcher := service.NewFetcherService()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+
+			jobID, err := fetcher.RunCompanyInfoIngestion(ctx)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+				"success":     true,
+				"job_id":      jobID,
+				"accepted_at": time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		// Fundamental data ingestion endpoint (public): trigger fundamental data fetch for all screener symbols
+		public.Post("/admin/ingest/fundamental-data", func(c *fiber.Ctx) error {
+			fetcher := service.NewFetcherService()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+
+			jobID, err := fetcher.RunFundamentalDataIngestion(ctx)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -523,6 +593,549 @@ func SetupRoutes(app *fiber.App) {
 						"interval": interval,
 						"lookback": lookback,
 					},
+				},
+			})
+		})
+
+		// Company Info routes (public, read-only)
+		// Get all company info
+		public.Get("/company-info", func(c *fiber.Ctx) error {
+			companyInfo, err := companyInfoService.GetAllCompanyInfo()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    companyInfo,
+			})
+		})
+
+		// Get company info by multiple symbols (POST with JSON body) - must come before /:symbol route
+		public.Post("/company-info/symbols", func(c *fiber.Ctx) error {
+			var request struct {
+				Symbols []string `json:"symbols"`
+			}
+
+			if err := c.BodyParser(&request); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid request body",
+				})
+			}
+
+			if len(request.Symbols) == 0 {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Symbols array is required",
+				})
+			}
+
+			companyInfo, err := companyInfoService.GetCompanyInfoBySymbols(request.Symbols)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    companyInfo,
+			})
+		})
+
+		// Search company info by name, sector, industry, or symbol - must come before /:symbol route
+		public.Get("/company-info/search", func(c *fiber.Ctx) error {
+			searchTerm := c.Query("q")
+			if searchTerm == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Search term (q) is required",
+				})
+			}
+
+			companyInfo, err := companyInfoService.SearchCompanyInfo(searchTerm)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    companyInfo,
+			})
+		})
+
+		// Get company info by sector - must come before /:symbol route
+		public.Get("/company-info/sector/:sector", func(c *fiber.Ctx) error {
+			sector := c.Params("sector")
+			if sector == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Sector is required",
+				})
+			}
+
+			companyInfo, err := companyInfoService.GetCompanyInfoBySector(sector)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    companyInfo,
+			})
+		})
+
+		// Get company info by industry - must come before /:symbol route
+		public.Get("/company-info/industry/:industry", func(c *fiber.Ctx) error {
+			industry := c.Params("industry")
+			if industry == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Industry is required",
+				})
+			}
+
+			companyInfo, err := companyInfoService.GetCompanyInfoByIndustry(industry)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    companyInfo,
+			})
+		})
+
+		// Get company info by symbol (must be last to avoid matching specific routes)
+		public.Get("/company-info/:symbol", func(c *fiber.Ctx) error {
+			symbol := c.Params("symbol")
+			if symbol == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Symbol is required",
+				})
+			}
+
+			companyInfo, err := companyInfoService.GetCompanyInfoBySymbol(symbol)
+			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Company info not found for symbol",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    companyInfo,
+			})
+		})
+
+		// Fundamental Data routes (public, read-only)
+		// Get all fundamental data
+		public.Get("/fundamental-data", func(c *fiber.Ctx) error {
+			fundamentalData, err := fundamentalDataService.GetAllFundamentalData()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    fundamentalData,
+			})
+		})
+
+		// Get fundamental data by symbol
+		public.Get("/fundamental-data/symbol/:symbol", func(c *fiber.Ctx) error {
+			symbol := c.Params("symbol")
+			if symbol == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Symbol is required",
+				})
+			}
+
+			fundamentalData, err := fundamentalDataService.GetFundamentalDataBySymbol(symbol)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    fundamentalData,
+			})
+		})
+
+		// Get fundamental data by symbol and statement type
+		public.Get("/fundamental-data/symbol/:symbol/type/:statementType", func(c *fiber.Ctx) error {
+			symbol := c.Params("symbol")
+			statementType := c.Params("statementType")
+			if symbol == "" || statementType == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Symbol and statement type are required",
+				})
+			}
+
+			fundamentalData, err := fundamentalDataService.GetFundamentalDataBySymbolAndType(symbol, statementType)
+			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Fundamental data not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    fundamentalData,
+			})
+		})
+
+		// Get fundamental data by symbol, statement type, and frequency
+		public.Get("/fundamental-data/symbol/:symbol/type/:statementType/frequency/:frequency", func(c *fiber.Ctx) error {
+			symbol := c.Params("symbol")
+			statementType := c.Params("statementType")
+			frequency := c.Params("frequency")
+			if symbol == "" || statementType == "" || frequency == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Symbol, statement type, and frequency are required",
+				})
+			}
+
+			fundamentalData, err := fundamentalDataService.GetFundamentalDataBySymbolTypeAndFrequency(symbol, statementType, frequency)
+			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Fundamental data not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    fundamentalData,
+			})
+		})
+
+		// Get fundamental data by statement type
+		public.Get("/fundamental-data/type/:statementType", func(c *fiber.Ctx) error {
+			statementType := c.Params("statementType")
+			if statementType == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Statement type is required",
+				})
+			}
+
+			fundamentalData, err := fundamentalDataService.GetFundamentalDataByStatementType(statementType)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    fundamentalData,
+			})
+		})
+
+		// Get fundamental data by frequency
+		public.Get("/fundamental-data/frequency/:frequency", func(c *fiber.Ctx) error {
+			frequency := c.Params("frequency")
+			if frequency == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Frequency is required",
+				})
+			}
+
+			fundamentalData, err := fundamentalDataService.GetFundamentalDataByFrequency(frequency)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    fundamentalData,
+			})
+		})
+
+		// Search fundamental data by symbol
+		public.Get("/fundamental-data/search", func(c *fiber.Ctx) error {
+			searchTerm := c.Query("q")
+			if searchTerm == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Search term (q) is required",
+				})
+			}
+
+			fundamentalData, err := fundamentalDataService.SearchFundamentalData(searchTerm)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    fundamentalData,
+			})
+		})
+
+		// Get fundamental metrics for a symbol
+		public.Get("/fundamental-data/metrics", func(c *fiber.Ctx) error {
+			symbol := c.Query("symbol")
+			statementType := c.Query("statement_type", "income")
+			frequency := c.Query("frequency", "annual")
+
+			if symbol == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Symbol is required",
+				})
+			}
+
+			metrics, err := fundamentalDataService.GetFundamentalMetrics(symbol, statementType, frequency)
+			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Fundamental data not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    metrics,
+			})
+		})
+
+		// Filter stocks by revenue growth (QoQ/YoY)
+		public.Get("/fundamental-data/revenue-growth", func(c *fiber.Ctx) error {
+			statementType := c.Query("statement_type", "income")
+			frequency := c.Query("frequency", "quarterly")
+
+			var minQoQ, maxQoQ, minYoY, maxYoY *float64
+
+			if minStr := c.Query("min_qoq_growth"); minStr != "" {
+				if val, err := strconv.ParseFloat(minStr, 64); err == nil {
+					minQoQ = &val
+				}
+			}
+			if maxStr := c.Query("max_qoq_growth"); maxStr != "" {
+				if val, err := strconv.ParseFloat(maxStr, 64); err == nil {
+					maxQoQ = &val
+				}
+			}
+			if minStr := c.Query("min_yoy_growth"); minStr != "" {
+				if val, err := strconv.ParseFloat(minStr, 64); err == nil {
+					minYoY = &val
+				}
+			}
+			if maxStr := c.Query("max_yoy_growth"); maxStr != "" {
+				if val, err := strconv.ParseFloat(maxStr, 64); err == nil {
+					maxYoY = &val
+				}
+			}
+
+			filter := service.RevenueGrowthFilter{
+				MinQoQGrowth:  minQoQ,
+				MaxQoQGrowth:  maxQoQ,
+				MinYoYGrowth:  minYoY,
+				MaxYoYGrowth:  maxYoY,
+				StatementType: statementType,
+				Frequency:     frequency,
+			}
+
+			results, err := fundamentalDataService.GetStocksWithRevenueGrowth(filter)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"stocks": results,
+					"count":  len(results),
+					"params": filter,
+				},
+			})
+		})
+
+		// Filter stocks by EPS range
+		public.Get("/fundamental-data/eps-filter", func(c *fiber.Ctx) error {
+			statementType := c.Query("statement_type", "income")
+			frequency := c.Query("frequency", "annual")
+			date := c.Query("date") // Optional: specific date, or latest if empty
+
+			var minEPS, maxEPS *float64
+
+			if minStr := c.Query("min_eps"); minStr != "" {
+				if val, err := strconv.ParseFloat(minStr, 64); err == nil {
+					minEPS = &val
+				}
+			}
+			if maxStr := c.Query("max_eps"); maxStr != "" {
+				if val, err := strconv.ParseFloat(maxStr, 64); err == nil {
+					maxEPS = &val
+				}
+			}
+
+			filter := service.EPSFilter{
+				MinEPS:        minEPS,
+				MaxEPS:        maxEPS,
+				Date:          date,
+				StatementType: statementType,
+				Frequency:     frequency,
+			}
+
+			results, err := fundamentalDataService.GetStocksWithEPSRange(filter)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"stocks": results,
+					"count":  len(results),
+					"params": filter,
+				},
+			})
+		})
+
+		// Filter stocks by margin range
+		public.Get("/fundamental-data/margin-filter", func(c *fiber.Ctx) error {
+			marginType := c.Query("margin_type", "gross") // gross, operating, net
+			statementType := c.Query("statement_type", "income")
+			frequency := c.Query("frequency", "annual")
+			date := c.Query("date") // Optional: specific date, or latest if empty
+
+			var minMargin, maxMargin *float64
+
+			if minStr := c.Query("min_margin"); minStr != "" {
+				if val, err := strconv.ParseFloat(minStr, 64); err == nil {
+					minMargin = &val
+				}
+			}
+			if maxStr := c.Query("max_margin"); maxStr != "" {
+				if val, err := strconv.ParseFloat(maxStr, 64); err == nil {
+					maxMargin = &val
+				}
+			}
+
+			filter := service.MarginFilter{
+				MarginType:    marginType,
+				MinMargin:     minMargin,
+				MaxMargin:     maxMargin,
+				Date:          date,
+				StatementType: statementType,
+				Frequency:     frequency,
+			}
+
+			results, err := fundamentalDataService.GetStocksWithMarginRange(filter)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"stocks": results,
+					"count":  len(results),
+					"params": filter,
 				},
 			})
 		})
@@ -1075,6 +1688,413 @@ func SetupRoutes(app *fiber.App) {
 			return c.JSON(fiber.Map{
 				"success": true,
 				"data":    historical,
+			})
+		})
+
+		// Watchlist routes
+		// Get all watchlists for the authenticated user
+		protected.Get("/watchlist", func(c *fiber.Ctx) error {
+			userIDStr, ok := c.Locals("userID").(string)
+			if !ok {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+					"success": false,
+					"error":   "Unauthorized",
+					"message": "User ID not found in token",
+				})
+			}
+
+			userID, err := uuid.Parse(userIDStr)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid user ID format",
+				})
+			}
+
+			watchlists, err := watchlistService.GetWatchlistsByUserID(userID)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    watchlists,
+			})
+		})
+
+		// Get a specific watchlist by ID
+		protected.Get("/watchlist/:id", func(c *fiber.Ctx) error {
+			id := c.Params("id")
+			watchlist, err := watchlistService.GetWatchlistByID(id)
+			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Watchlist not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    watchlist,
+			})
+		})
+
+		// Create a new watchlist
+		protected.Post("/watchlist", func(c *fiber.Ctx) error {
+			userIDStr, ok := c.Locals("userID").(string)
+			if !ok {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+					"success": false,
+					"error":   "Unauthorized",
+					"message": "User ID not found in token",
+				})
+			}
+
+			userID, err := uuid.Parse(userIDStr)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid user ID format",
+				})
+			}
+
+			var watchlist model.Watchlist
+			if err := c.BodyParser(&watchlist); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid request body",
+				})
+			}
+
+			watchlist.UserID = userID
+			if err := watchlistService.CreateWatchlist(&watchlist); err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+				"success": true,
+				"data":    watchlist,
+			})
+		})
+
+		// Update a watchlist
+		protected.Put("/watchlist/:id", func(c *fiber.Ctx) error {
+			id := c.Params("id")
+			var watchlist model.Watchlist
+			if err := c.BodyParser(&watchlist); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid request body",
+				})
+			}
+
+			if err := watchlistService.UpdateWatchlist(id, &watchlist); err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Watchlist not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    watchlist,
+			})
+		})
+
+		// Delete a watchlist
+		protected.Delete("/watchlist/:id", func(c *fiber.Ctx) error {
+			id := c.Params("id")
+			if err := watchlistService.DeleteWatchlist(id); err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Watchlist not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"message": "Watchlist deleted successfully",
+			})
+		})
+
+		// Watchlist Items routes
+		// Get all items for a watchlist
+		protected.Get("/watchlist/:id/items", func(c *fiber.Ctx) error {
+			watchlistIDStr := c.Params("id")
+			watchlistID, err := uuid.Parse(watchlistIDStr)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid watchlist ID format",
+				})
+			}
+
+			items, err := watchlistService.GetWatchlistItems(watchlistID)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    items,
+			})
+		})
+
+		// Get a specific item by ID
+		protected.Get("/watchlist/item/:id", func(c *fiber.Ctx) error {
+			id := c.Params("id")
+			item, err := watchlistService.GetWatchlistItemByID(id)
+			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Item not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    item,
+			})
+		})
+
+		// Add an item to a watchlist
+		protected.Post("/watchlist/:id/items", func(c *fiber.Ctx) error {
+			watchlistIDStr := c.Params("id")
+			watchlistID, err := uuid.Parse(watchlistIDStr)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid watchlist ID format",
+				})
+			}
+
+			var item model.WatchlistItem
+			if err := c.BodyParser(&item); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid request body",
+				})
+			}
+
+			if err := watchlistService.AddItemToWatchlist(watchlistID, &item); err != nil {
+				if err.Error() == "watchlist not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": err.Error(),
+					})
+				}
+				if err.Error() == "item already exists in watchlist" {
+					return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+						"success": false,
+						"error":   "Conflict",
+						"message": err.Error(),
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+				"success": true,
+				"data":    item,
+			})
+		})
+
+		// Update a watchlist item
+		protected.Put("/watchlist/item/:id", func(c *fiber.Ctx) error {
+			id := c.Params("id")
+			var item model.WatchlistItem
+			if err := c.BodyParser(&item); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid request body",
+				})
+			}
+
+			if err := watchlistService.UpdateWatchlistItem(id, &item); err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Item not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    item,
+			})
+		})
+
+		// Delete a watchlist item
+		protected.Delete("/watchlist/item/:id", func(c *fiber.Ctx) error {
+			id := c.Params("id")
+			if err := watchlistService.DeleteWatchlistItem(id); err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Item not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"message": "Item deleted successfully",
+			})
+		})
+
+		// Toggle starred status of an item
+		protected.Patch("/watchlist/item/:id/star", func(c *fiber.Ctx) error {
+			id := c.Params("id")
+			item, err := watchlistService.ToggleItemStarred(id)
+			if err != nil {
+				if err.Error() == "record not found" {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"success": false,
+						"error":   "Not Found",
+						"message": "Item not found",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    item,
+			})
+		})
+
+		// Get all starred items for the authenticated user
+		protected.Get("/watchlist/starred", func(c *fiber.Ctx) error {
+			userIDStr, ok := c.Locals("userID").(string)
+			if !ok {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+					"success": false,
+					"error":   "Unauthorized",
+					"message": "User ID not found in token",
+				})
+			}
+
+			userID, err := uuid.Parse(userIDStr)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid user ID format",
+				})
+			}
+
+			items, err := watchlistService.GetStarredItems(userID)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    items,
+			})
+		})
+
+		// Batch update items (useful for price updates)
+		protected.Put("/watchlist/items/batch", func(c *fiber.Ctx) error {
+			var items []model.WatchlistItem
+			if err := c.BodyParser(&items); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "Invalid request body",
+				})
+			}
+
+			if err := watchlistService.BatchUpdateItems(items); err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"message": "Items updated successfully",
+				"count":   len(items),
 			})
 		})
 	}

@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { HistoricalTest } from "@/components/historical-test";
 
 export default async function WatchlistPage() {
   const supabase = await createClient();
@@ -18,7 +17,6 @@ export default async function WatchlistPage() {
           Test component using TanStack Query hooks to fetch historical data from the backend.
         </p>
       </div>
-      <HistoricalTest />
     </div>
   );
 }
