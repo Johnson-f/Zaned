@@ -46,6 +46,8 @@ export const historicalKeys = {
   lists: () => [...historicalKeys.all, "list"] as const,
   details: () => [...historicalKeys.all, "detail"] as const,
   detail: (id: string) => [...historicalKeys.details(), id] as const,
+  bySymbol: (symbol: string, range: string, interval: string) =>
+    [...historicalKeys.all, "by-symbol", symbol, range, interval] as const,
   // Screening query keys
   screening: () => [...historicalKeys.all, "screening"] as const,
   insideDay: () => [...historicalKeys.screening(), "inside-day"] as const,
@@ -104,6 +106,37 @@ export function useHistoricalById(id: string, enabled: boolean = true) {
     },
     enabled: enabled && !!id,
     ...CACHE_CONFIG.DETAIL,
+    placeholderData: (previousData) => previousData,
+    structuralSharing: true,
+  });
+}
+
+/**
+ * Hook to get historical records by symbol, range, and interval
+ */
+export function useHistoricalBySymbol(
+  symbol: string,
+  range: string,
+  interval: string,
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: historicalKeys.bySymbol(symbol, range, interval),
+    queryFn: async () => {
+      const response = await historicalService.getHistoricalBySymbol(
+        symbol,
+        range,
+        interval
+      );
+      if (!response.success) {
+        throw new Error(
+          response.message || "Failed to fetch historical records"
+        );
+      }
+      return response.data || [];
+    },
+    enabled: enabled && !!symbol && !!range && !!interval,
+    ...CACHE_CONFIG.LIST,
     placeholderData: (previousData) => previousData,
     structuralSharing: true,
   });

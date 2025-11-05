@@ -68,6 +68,19 @@ export async function getHistoricalById(
   return fetchApi<Historical>(API_ENDPOINTS.HISTORICAL.BY_ID(id));
 }
 
+/**
+ * Get historical records by symbol, range, and interval
+ */
+export async function getHistoricalBySymbol(
+  symbol: string,
+  range: string,
+  interval: string
+): Promise<ApiResponse<Historical[]>> {
+  return fetchApi<Historical[]>(
+    API_ENDPOINTS.HISTORICAL.BY_SYMBOL(symbol, range, interval)
+  );
+}
+
 export async function getInsideDaySymbols(): Promise<
   ApiResponse<{ symbols: string[]; count: number }>
 > {

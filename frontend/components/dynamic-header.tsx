@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/breadcrumb"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { SymbolSearch } from "@/components/symbol-search"
 
 // Map paths to page titles
 const pathToTitleMap: Record<string, string> = {
@@ -60,6 +61,9 @@ export function DynamicHeader() {
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
+      </div>
+      <div className="px-3">
+        <SymbolSearch />
       </div>
     </header>
   )

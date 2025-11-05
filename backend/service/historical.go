@@ -229,6 +229,30 @@ func (s *HistoricalService) GetHistoricalByID(id string) (*model.Historical, err
 	return &historical, nil
 }
 
+// GetHistoricalBySymbolRangeInterval fetches historical records filtered by symbol, range, and interval
+// Returns records ordered by epoch ascending
+func (s *HistoricalService) GetHistoricalBySymbolRangeInterval(symbol, rangeParam, interval string) ([]model.Historical, error) {
+	if symbol == "" {
+		return nil, errors.New("symbol is required")
+	}
+	if rangeParam == "" {
+		return nil, errors.New("range is required")
+	}
+	if interval == "" {
+		return nil, errors.New("interval is required")
+	}
+
+	var historical []model.Historical
+	result := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, rangeParam, interval).
+		Order("epoch ASC").
+		Find(&historical)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return historical, nil
+}
+
 // GetSymbolsWithDailyInsideDay scans all symbols in the historical table
 // and returns those whose latest daily bar is an inside day compared to the
 // immediately previous daily bar.

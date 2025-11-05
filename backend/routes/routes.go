@@ -1514,6 +1514,35 @@ func SetupRoutes(app *fiber.App) {
 		})
 
 		// Historical data routes
+		// Get historical records by symbol, range, and interval (must be before /historical/:id)
+		protected.Get("/historical/by-symbol", func(c *fiber.Ctx) error {
+			symbol := c.Query("symbol")
+			rangeParam := c.Query("range")
+			interval := c.Query("interval")
+
+			if symbol == "" || rangeParam == "" || interval == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "symbol, range, and interval query parameters are required",
+				})
+			}
+
+			historical, err := historicalService.GetHistoricalBySymbolRangeInterval(symbol, rangeParam, interval)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    historical,
+			})
+		})
+
 		// Get all historical records
 		protected.Get("/historical", func(c *fiber.Ctx) error {
 			historical, err := historicalService.GetAllHistorical()

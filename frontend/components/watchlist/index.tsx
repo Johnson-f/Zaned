@@ -25,6 +25,9 @@ import {
   useDeleteWatchlistItem,
 } from "@/hooks/use-watchlist"
 import { useCompanyInfo, useSearchCompanyInfo } from "@/hooks/use-company-info"
+import { useQueryClient } from "@tanstack/react-query"
+import { watchlistKeys } from "@/hooks/use-watchlist"
+import type { Watchlist } from "@/lib/types/watchlist"
 
 export function Watchlist() {
   const [user, setUser] = React.useState<{ id: string } | null>(null)
@@ -36,6 +39,7 @@ export function Watchlist() {
   const [selectedItem, setSelectedItem] = React.useState<{ id: string; symbol: string; name: string } | null>(null)
   const [openItemMenu, setOpenItemMenu] = React.useState(false)
   const [menuPosition, setMenuPosition] = React.useState<{ x: number; y: number } | null>(null)
+  const queryClient = useQueryClient()
 
   // Check if user is authenticated
   React.useEffect(() => {
@@ -166,6 +170,60 @@ export function Watchlist() {
       setSelectedItem(null)
     } catch (error) {
       console.error("Failed to delete stock:", error)
+    }
+  }
+
+  // Handle move stock to top
+  const handleMoveToTop = async () => {
+    if (!selectedItem || !selectedWatchlistId) return
+
+    try {
+      // Find the item in the current list
+      const itemToMove = items.find(item => item.id === selectedItem.id)
+      if (!itemToMove) {
+        setOpenItemMenu(false)
+        setSelectedItem(null)
+        return
+      }
+
+      // Optimistically update the cache to move item to top
+      const currentWatchlist = queryClient.getQueryData<Watchlist>(watchlistKeys.detail(selectedWatchlistId))
+      if (currentWatchlist && currentWatchlist.items) {
+        const reorderedItems = [
+          itemToMove,
+          ...currentWatchlist.items.filter((item) => item.id !== selectedItem.id)
+        ]
+        
+        // Update the cache optimistically
+        queryClient.setQueryData(watchlistKeys.detail(selectedWatchlistId), {
+          ...currentWatchlist,
+          items: reorderedItems,
+        })
+      }
+
+      // Also update the watchlists list cache
+      const watchlistsData = queryClient.getQueryData<Watchlist[]>(watchlistKeys.lists())
+      if (watchlistsData) {
+        const updatedWatchlists = watchlistsData.map((wl) => {
+          if (wl.id === selectedWatchlistId && wl.items) {
+            const reorderedItems = [
+              itemToMove,
+              ...wl.items.filter((item) => item.id !== selectedItem.id)
+            ]
+            return {
+              ...wl,
+              items: reorderedItems,
+            }
+          }
+          return wl
+        })
+        queryClient.setQueryData(watchlistKeys.lists(), updatedWatchlists)
+      }
+
+      setOpenItemMenu(false)
+      setSelectedItem(null)
+    } catch (error) {
+      console.error("Failed to move stock to top:", error)
     }
   }
 
@@ -409,9 +467,64 @@ export function Watchlist() {
           </div>
         ) : (
           <>
-            {/* Add stocks button when fewer than 10 stocks */}
+            {/* Stock List */}
+            <div className="divide-y">
+              {items.map((item) => {
+                const afterHours = formatAfterHours(item.percentChange)
+                const afterHoursColor = getAfterHoursColor(item.percentChange)
+
+                return (
+                  <div
+                    key={item.id}
+                    className="px-4 py-3 hover:bg-sidebar-accent/50 transition-colors cursor-pointer select-none"
+                    onDoubleClick={(e) => handleItemDoubleClick(e, {
+                      id: item.id,
+                      symbol: item.symbol || item.name.split(" ")[0],
+                      name: item.name,
+                    })}
+                    onContextMenu={(e) => handleItemRightClick(e, {
+                      id: item.id,
+                      symbol: item.symbol || item.name.split(" ")[0],
+                      name: item.name,
+                    })}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      {/* Left side - Ticker and Name */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-sm whitespace-nowrap">
+                            {item.symbol || item.name.split(" ")[0]}
+                          </span>
+                          {/* Icons placeholder - you can add actual icons based on item data */}
+                          {item.starred && (
+                            <span className="text-xs">⭐</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {item.name}
+                        </div>
+                      </div>
+
+                      {/* Right side - Price and After-hours */}
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className="font-semibold text-sm">
+                          {formatPrice(item.price)}
+                        </span>
+                        {afterHours && (
+                          <span className={`text-xs ${afterHoursColor}`}>
+                            After: {afterHours}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Add stocks button when fewer than 10 stocks - positioned at bottom */}
             {items.length < 10 && (
-              <div className="px-4 py-2 border-b">
+              <div className="px-4 py-2 border-t mt-auto">
                 <Popover open={openAddStocksPopover} onOpenChange={setOpenAddStocksPopover}>
                   <PopoverTrigger asChild>
                     <Button
@@ -514,61 +627,6 @@ export function Watchlist() {
                 </Popover>
               </div>
             )}
-            
-            {/* Stock List */}
-            <div className="divide-y">
-              {items.map((item) => {
-                const afterHours = formatAfterHours(item.percentChange)
-                const afterHoursColor = getAfterHoursColor(item.percentChange)
-
-                return (
-                  <div
-                    key={item.id}
-                    className="px-4 py-3 hover:bg-sidebar-accent/50 transition-colors cursor-pointer select-none"
-                    onDoubleClick={(e) => handleItemDoubleClick(e, {
-                      id: item.id,
-                      symbol: item.symbol || item.name.split(" ")[0],
-                      name: item.name,
-                    })}
-                    onContextMenu={(e) => handleItemRightClick(e, {
-                      id: item.id,
-                      symbol: item.symbol || item.name.split(" ")[0],
-                      name: item.name,
-                    })}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      {/* Left side - Ticker and Name */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-sm whitespace-nowrap">
-                            {item.symbol || item.name.split(" ")[0]}
-                          </span>
-                          {/* Icons placeholder - you can add actual icons based on item data */}
-                          {item.starred && (
-                            <span className="text-xs">⭐</span>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {item.name}
-                        </div>
-                      </div>
-
-                      {/* Right side - Price and After-hours */}
-                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <span className="font-semibold text-sm">
-                          {formatPrice(item.price)}
-                        </span>
-                        {afterHours && (
-                          <span className={`text-xs ${afterHoursColor}`}>
-                            After: {afterHours}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
 
            {/* Stock Action Menu Modal */}
            {selectedItem && openItemMenu && menuPosition && (
@@ -597,8 +655,9 @@ export function Watchlist() {
                   </div>
                   <div className="border-t">
                     <button
-                      onClick={() => setOpenItemMenu(false)}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors"
+                      onClick={handleMoveToTop}
+                      disabled={false}
+                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors disabled:opacity-50"
                     >
                       Top
                     </button>

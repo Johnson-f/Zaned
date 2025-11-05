@@ -194,6 +194,13 @@ export const API_ENDPOINTS = {
   HISTORICAL: {
     BASE: `${API_BASE_URL}/api/protected/historical`,
     BY_ID: (id: string) => `${API_BASE_URL}/api/protected/historical/${id}`,
+    BY_SYMBOL: (symbol: string, range: string, interval: string) => {
+      const params = new URLSearchParams();
+      params.append("symbol", symbol);
+      params.append("range", range);
+      params.append("interval", interval);
+      return `${API_BASE_URL}/api/protected/historical/by-symbol?${params.toString()}`;
+    },
     BATCH: `${API_BASE_URL}/api/protected/historical/batch`,
   },
   WATCHLIST: {
