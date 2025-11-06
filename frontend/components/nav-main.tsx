@@ -22,10 +22,26 @@ export function NavMain({
 }) {
   const pathname = usePathname()
 
+  // Helper function to check if a route is active
+  const isRouteActive = (url: string, currentPath: string): boolean => {
+    // Exact match
+    if (currentPath === url) return true
+    
+    // For root route (/app), only match exactly
+    if (url === "/app") {
+      return currentPath === "/app"
+    }
+    
+    // For other routes, check if pathname starts with the URL
+    // Note: usePathname() already strips query params, so /app/screener?symbol=AAPL becomes /app/screener
+    // This handles cases like /app/screener matching /app/screener
+    return currentPath.startsWith(url + "/") || currentPath === url
+  }
+
   return (
     <SidebarMenu>
       {items.map((item) => {
-        const isActive = item.isActive ?? pathname === item.url
+        const isActive = item.isActive ?? isRouteActive(item.url, pathname)
         
         return (
           <SidebarMenuItem key={item.title}>
