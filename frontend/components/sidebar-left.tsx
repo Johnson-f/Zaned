@@ -57,7 +57,7 @@ const data = {
     },
     {
       title: "Screener",
-      url: "/app/screener",
+      url: "/app/charting",
       icon: Search,
     },
     {

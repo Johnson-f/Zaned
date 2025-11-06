@@ -15,7 +15,7 @@ import { SymbolSearch } from "@/components/symbol-search"
 const pathToTitleMap: Record<string, string> = {
   "/app": "Home",
   "/app/ai": "Ask AI",
-  "/app/screener": "Screener",
+  "/app/charting": "Charting",
   "/app/watchlist": "Watchlist",
 }
 

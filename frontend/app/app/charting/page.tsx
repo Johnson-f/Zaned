@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { Screener } from "@/components/screener";
+import { Charting } from "@/components/charting";
 
-export default async function ScreenerPage() {
+export default async function ChartingPage() {
   const supabase = await createClient();
 
   const { data, error } = await supabase.auth.getClaims();
@@ -12,7 +12,7 @@ export default async function ScreenerPage() {
 
   return (
     <div className="flex-1 w-full flex flex-col gap-12">
-      <Screener />
+      <Charting />
     </div>
   );
 }

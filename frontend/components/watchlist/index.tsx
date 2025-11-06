@@ -1,22 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { List, Plus, Star, Bell, Search, Copy, ChevronRight } from "lucide-react"
+import { List, Plus, Star } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { WatchlistSelect } from "@/components/watchlist/WatchlistSelect"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { AddStocksPopover } from "@/components/watchlist/AddStocksPopover"
+import { StockActionMenu } from "@/components/watchlist/StockActionMenu"
 import {
   useWatchlists,
   useWatchlistById,
@@ -28,6 +19,17 @@ import { useCompanyInfo, useSearchCompanyInfo } from "@/hooks/use-company-info"
 import { useQueryClient } from "@tanstack/react-query"
 import { watchlistKeys } from "@/hooks/use-watchlist"
 import type { Watchlist } from "@/lib/types/watchlist"
+import { formatAfterHours, getAfterHoursColor, formatPrice } from "@/components/watchlist/utils"
+import { useInsideDaySymbols, useHighVolumeQuarterSymbols, useHighVolumeYearSymbols, useHighVolumeEverSymbols } from "@/hooks/use-historical"
+import InsideDayWatchlist from "@/components/watchlist/inside-day-watchlist"
+import HighestVolumeQuarterWatchlist from "@/components/watchlist/highest-volume-quarter"
+import HighestVolumeYearWatchlist from "@/components/watchlist/highest-volume-year"
+import HighestVolumeEverWatchlist from "@/components/watchlist/highest-volume-ever"
+
+const INSIDE_DAY_VALUE = "inside-day"
+const HIGHEST_VOLUME_QUARTER_VALUE = "highest-volume-quarter"
+const HIGHEST_VOLUME_YEAR_VALUE = "highest-volume-year"
+const HIGHEST_VOLUME_EVER_VALUE = "highest-volume-ever"
 
 export function Watchlist() {
   const [user, setUser] = React.useState<{ id: string } | null>(null)
@@ -76,6 +78,74 @@ export function Watchlist() {
   const createWatchlist = useCreateWatchlist()
   const addWatchlistItem = useAddWatchlistItem()
   const deleteWatchlistItem = useDeleteWatchlistItem()
+
+  // Fetch inside day symbols count
+  const { data: insideDayData } = useInsideDaySymbols(!!user)
+  const insideDayCount = insideDayData?.count ?? 0
+
+  // Fetch highest volume quarter symbols count
+  const { data: highestVolumeQuarterData } = useHighVolumeQuarterSymbols(!!user)
+  const highestVolumeQuarterCount = highestVolumeQuarterData?.count ?? 0
+
+  // Fetch highest volume year symbols count
+  const { data: highestVolumeYearData } = useHighVolumeYearSymbols(!!user)
+  const highestVolumeYearCount = highestVolumeYearData?.count ?? 0
+
+  // Fetch highest volume ever symbols count
+  const { data: highestVolumeEverData } = useHighVolumeEverSymbols(!!user)
+  const highestVolumeEverCount = highestVolumeEverData?.count ?? 0
+
+  // Ensure "Inside Day" watchlist exists (only once, at parent level)
+  React.useEffect(() => {
+    if (!user || watchlistsLoading) return
+    
+    const BUILT_IN_WATCHLIST_NAME = "Inside Day"
+    const existing = watchlists.find((w) => w.name.toLowerCase() === BUILT_IN_WATCHLIST_NAME.toLowerCase())
+    
+    if (!existing) {
+      // Only create if it doesn't exist
+      createWatchlist.mutate(BUILT_IN_WATCHLIST_NAME)
+    }
+  }, [user, watchlists, watchlistsLoading, createWatchlist])
+
+  // Ensure "Highest Volume Quarter" watchlist exists (only once, at parent level)
+  React.useEffect(() => {
+    if (!user || watchlistsLoading) return
+    
+    const BUILT_IN_WATCHLIST_NAME = "Highest Volume Quarter"
+    const existing = watchlists.find((w) => w.name.toLowerCase() === BUILT_IN_WATCHLIST_NAME.toLowerCase())
+    
+    if (!existing) {
+      // Only create if it doesn't exist
+      createWatchlist.mutate(BUILT_IN_WATCHLIST_NAME)
+    }
+  }, [user, watchlists, watchlistsLoading, createWatchlist])
+
+  // Ensure "Highest Volume Year" watchlist exists (only once, at parent level)
+  React.useEffect(() => {
+    if (!user || watchlistsLoading) return
+    
+    const BUILT_IN_WATCHLIST_NAME = "Highest Volume Year"
+    const existing = watchlists.find((w) => w.name.toLowerCase() === BUILT_IN_WATCHLIST_NAME.toLowerCase())
+    
+    if (!existing) {
+      // Only create if it doesn't exist
+      createWatchlist.mutate(BUILT_IN_WATCHLIST_NAME)
+    }
+  }, [user, watchlists, watchlistsLoading, createWatchlist])
+
+  // Ensure "Highest Volume Ever" watchlist exists (only once, at parent level)
+  React.useEffect(() => {
+    if (!user || watchlistsLoading) return
+    
+    const BUILT_IN_WATCHLIST_NAME = "Highest Volume Ever"
+    const existing = watchlists.find((w) => w.name.toLowerCase() === BUILT_IN_WATCHLIST_NAME.toLowerCase())
+    
+    if (!existing) {
+      // Only create if it doesn't exist
+      createWatchlist.mutate(BUILT_IN_WATCHLIST_NAME)
+    }
+  }, [user, watchlists, watchlistsLoading, createWatchlist])
 
   // Fetch all company info or search results
   const { data: allCompanyInfo = [], isLoading: loadingAllCompanies } = useCompanyInfo(
@@ -235,26 +305,7 @@ export function Watchlist() {
   const items = selectedWatchlist?.items || []
   const itemCount = items.length
 
-  // Format after-hours percentage
-  const formatAfterHours = (percentChange?: string | null) => {
-    if (!percentChange) return null
-    const num = parseFloat(percentChange)
-    const sign = num >= 0 ? "+" : ""
-    return `${sign}${num.toFixed(2)}%`
-  }
-
-  // Get color for after-hours change
-  const getAfterHoursColor = (percentChange?: string | null) => {
-    if (!percentChange) return "text-muted-foreground"
-    const num = parseFloat(percentChange)
-    return num >= 0 ? "text-green-500" : "text-orange-500"
-  }
-
-  // Format price
-  const formatPrice = (price?: number | null) => {
-    if (price === null || price === undefined) return "N/A"
-    return price.toFixed(2)
-  }
+  // utilities moved to utils.ts
 
   return (
     <div className="flex flex-col h-full">
@@ -268,54 +319,57 @@ export function Watchlist() {
 
       {/* Watchlist Select Dropdown */}
       <div className="px-4 py-3 border-b">
-        <Select
+        <WatchlistSelect
           value={selectedWatchlistId || undefined}
           onValueChange={setSelectedWatchlistId}
-          disabled={watchlistsLoading}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue>
-              {watchlistsLoading
-                ? "Loading..."
-                : watchlists.length === 0
-                ? "Select watchlist"
-                : selectedWatchlist
-                ? `${selectedWatchlist.name} (${itemCount})`
-                : "Select watchlist"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {watchlists.length === 0 ? (
-              <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                No watchlists yet
-              </div>
-            ) : (
-              watchlists.map((watchlist) => (
-                <SelectItem key={watchlist.id} value={watchlist.id}>
-                  {watchlist.name} ({watchlist.items?.length || 0})
-                </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
+          watchlists={watchlists}
+          loading={watchlistsLoading}
+          selectedWatchlist={selectedWatchlist}
+          itemCount={itemCount}
+          insideDayCount={insideDayCount}
+          highestVolumeQuarterCount={highestVolumeQuarterCount}
+          highestVolumeYearCount={highestVolumeYearCount}
+          highestVolumeEverCount={highestVolumeEverCount}
+          onCreateWatchlist={async (name: string) => {
+            const newWatchlist = await createWatchlist.mutateAsync(name)
+            if (newWatchlist) {
+              setSelectedWatchlistId(newWatchlist.id)
+            }
+          }}
+          isCreating={createWatchlist.isPending}
+        />
       </div>
 
       {/* Stock List */}
       <div className="flex-1 overflow-y-auto">
-        {!selectedWatchlistId ? (
+        {selectedWatchlistId === INSIDE_DAY_VALUE ? (
+          <InsideDayWatchlist />
+        ) : selectedWatchlistId === HIGHEST_VOLUME_QUARTER_VALUE ? (
+          <HighestVolumeQuarterWatchlist />
+        ) : selectedWatchlistId === HIGHEST_VOLUME_YEAR_VALUE ? (
+          <HighestVolumeYearWatchlist />
+        ) : selectedWatchlistId === HIGHEST_VOLUME_EVER_VALUE ? (
+          <HighestVolumeEverWatchlist />
+        ) : !selectedWatchlistId ? (
           <div className="flex flex-col items-center justify-center py-8 px-4">
-            <Popover open={openPopover} onOpenChange={setOpenPopover}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => setOpenPopover(true)}
-                >
-                  <Plus className="size-4" />
-                  <span>Add watchlist</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80">
+            <AddStocksPopover
+              open={openPopover}
+              onOpenChange={setOpenPopover}
+              stockSearchTerm={watchlistName}
+              setStockSearchTerm={setWatchlistName}
+              isLoadingStocks={false}
+              displayStocks={[]}
+              onAddStock={() => {}}
+              isAdding={false}
+              triggerLabel="Add watchlist"
+              widthClass="w-80"
+            />
+            {/* Create Watchlist content */}
+            {openPopover && (
+              <div className="hidden">{/* placeholder to keep behavior consistent */}</div>
+            )}
+            {/* We keep the original creation content rendered below the trigger */}
+            <div className="hidden">
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <h4 className="font-medium text-sm">Create Watchlist</h4>
@@ -356,8 +410,7 @@ export function Watchlist() {
                     </Button>
                   </div>
                 </div>
-              </PopoverContent>
-            </Popover>
+            </div>
           </div>
         ) : watchlistLoading ? (
           <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
@@ -365,105 +418,17 @@ export function Watchlist() {
           </div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 px-4">
-            <Popover open={openAddStocksPopover} onOpenChange={setOpenAddStocksPopover}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => setOpenAddStocksPopover(true)}
-                >
-                  <Plus className="size-4" />
-                  <span>Add stocks</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-96">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <h4 className="font-medium text-sm">Add Stocks</h4>
-                    <p className="text-xs text-muted-foreground">
-                      Search for stocks to add to your watchlist
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Input
-                      placeholder="Search by symbol or name..."
-                      value={stockSearchTerm}
-                      onChange={(e) => setStockSearchTerm(e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {isLoadingStocks ? (
-                      <div className="text-sm text-muted-foreground text-center py-4">
-                        Loading...
-                      </div>
-                    ) : displayStocks.length === 0 ? (
-                      <div className="text-sm text-muted-foreground text-center py-4">
-                        {stockSearchTerm.length > 0 ? "No stocks found" : "No stocks available"}
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        {displayStocks.slice(0, 100).map((company) => {
-                          const price = company.price ? parseFloat(company.price.replace(/[^0-9.-]/g, '')) : null
-                          const isAdding = addWatchlistItem.isPending
-                          
-                          return (
-                            <div
-                              key={company.symbol}
-                              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent transition-colors"
-                            >
-                              {/* Logo */}
-                              {company.logo && (
-                                <img
-                                  src={company.logo}
-                                  alt={company.symbol}
-                                  className="size-8 rounded object-contain"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none'
-                                  }}
-                                />
-                              )}
-                              {/* Stock Info */}
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-sm">{company.symbol}</div>
-                                <div className="text-xs text-muted-foreground truncate">
-                                  {company.name}
-                                </div>
-                              </div>
-                              {/* Price */}
-                              <div className="text-sm font-medium">
-                                {price !== null ? `$${price.toFixed(2)}` : 'N/A'}
-                              </div>
-                              {/* Star Button */}
-                              <button
-                                onClick={() => handleAddStock(company)}
-                                disabled={isAdding}
-                                className="p-1.5 rounded-md hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Add to watchlist"
-                              >
-                                <Star className="size-4 text-muted-foreground hover:text-yellow-500 transition-colors" />
-                              </button>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setOpenAddStocksPopover(false)
-                        setStockSearchTerm("")
-                      }}
-                    >
-                      Close
-                    </Button>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
+            <AddStocksPopover
+              open={openAddStocksPopover}
+              onOpenChange={setOpenAddStocksPopover}
+              stockSearchTerm={stockSearchTerm}
+              setStockSearchTerm={setStockSearchTerm}
+              isLoadingStocks={isLoadingStocks}
+              displayStocks={displayStocks as any}
+              onAddStock={handleAddStock as any}
+              isAdding={addWatchlistItem.isPending}
+              triggerLabel="Add stocks"
+            />
           </div>
         ) : (
           <>
@@ -525,206 +490,29 @@ export function Watchlist() {
             {/* Add stocks button when fewer than 10 stocks - positioned at bottom */}
             {items.length < 10 && (
               <div className="px-4 py-2 border-t mt-auto">
-                <Popover open={openAddStocksPopover} onOpenChange={setOpenAddStocksPopover}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-2"
-                      onClick={() => setOpenAddStocksPopover(true)}
-                    >
-                      <Plus className="size-4" />
-                      <span>Add stocks</span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-96">
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <h4 className="font-medium text-sm">Add Stocks</h4>
-                        <p className="text-xs text-muted-foreground">
-                          Search for stocks to add to your watchlist
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Input
-                          placeholder="Search by symbol or name..."
-                          value={stockSearchTerm}
-                          onChange={(e) => setStockSearchTerm(e.target.value)}
-                          autoFocus
-                        />
-                      </div>
-                      <div className="space-y-2 max-h-96 overflow-y-auto">
-                        {isLoadingStocks ? (
-                          <div className="text-sm text-muted-foreground text-center py-4">
-                            Loading...
-                          </div>
-                        ) : displayStocks.length === 0 ? (
-                          <div className="text-sm text-muted-foreground text-center py-4">
-                            {stockSearchTerm.length > 0 ? "No stocks found" : "No stocks available"}
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            {displayStocks.slice(0, 100).map((company) => {
-                              const price = company.price ? parseFloat(company.price.replace(/[^0-9.-]/g, '')) : null
-                              const isAdding = addWatchlistItem.isPending
-                              
-                              return (
-                                <div
-                                  key={company.symbol}
-                                  className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent transition-colors"
-                                >
-                                  {/* Logo */}
-                                  {company.logo && (
-                                    <img
-                                      src={company.logo}
-                                      alt={company.symbol}
-                                      className="size-8 rounded object-contain"
-                                      onError={(e) => {
-                                        e.currentTarget.style.display = 'none'
-                                      }}
-                                    />
-                                  )}
-                                  {/* Stock Info */}
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-sm">{company.symbol}</div>
-                                    <div className="text-xs text-muted-foreground truncate">
-                                      {company.name}
-                                    </div>
-                                  </div>
-                                  {/* Price */}
-                                  <div className="text-sm font-medium">
-                                    {price !== null ? `$${price.toFixed(2)}` : 'N/A'}
-                                  </div>
-                                  {/* Star Button */}
-                                  <button
-                                    onClick={() => handleAddStock(company)}
-                                    disabled={isAdding}
-                                    className="p-1.5 rounded-md hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title="Add to watchlist"
-                                  >
-                                    <Star className="size-4 text-muted-foreground hover:text-yellow-500 transition-colors" />
-                                  </button>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex justify-end">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setOpenAddStocksPopover(false)
-                            setStockSearchTerm("")
-                          }}
-                        >
-                          Close
-                        </Button>
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <AddStocksPopover
+                  open={openAddStocksPopover}
+                  onOpenChange={setOpenAddStocksPopover}
+                  stockSearchTerm={stockSearchTerm}
+                  setStockSearchTerm={setStockSearchTerm}
+                  isLoadingStocks={isLoadingStocks}
+                  displayStocks={displayStocks as any}
+                  onAddStock={handleAddStock as any}
+                  isAdding={addWatchlistItem.isPending}
+                />
               </div>
             )}
 
            {/* Stock Action Menu Modal */}
-           {selectedItem && openItemMenu && menuPosition && (
-              <div
-                className="fixed inset-0 z-50"
-                onClick={() => setOpenItemMenu(false)}
-              >
-                <div
-                  className="absolute bg-popover text-popover-foreground rounded-md border shadow-lg w-64"
-                  style={{
-                    right: `calc(100vw - ${menuPosition.x}px + 16px)`,
-                    top: `${menuPosition.y}px`,
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="p-3">
-                    <h4 className="font-medium text-sm mb-3">Color Marking</h4>
-                    {/* Color options */}
-                    <div className="flex gap-2 mb-3">
-                      <div className="size-4 rounded-full bg-blue-400 cursor-pointer" />
-                      <div className="size-4 rounded-full bg-green-500 cursor-pointer" />
-                      <div className="size-4 rounded-full bg-purple-500 cursor-pointer" />
-                      <div className="size-4 rounded-full bg-orange-500 cursor-pointer" />
-                      <div className="size-4 rounded-full bg-yellow-500 cursor-pointer" />
-                    </div>
-                  </div>
-                  <div className="border-t">
-                    <button
-                      onClick={handleMoveToTop}
-                      disabled={false}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors disabled:opacity-50"
-                    >
-                      Top
-                    </button>
-                    <button
-                      onClick={handleDeleteStock}
-                      disabled={deleteWatchlistItem.isPending}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors text-destructive disabled:opacity-50"
-                    >
-                      Delete
-                    </button>
-                    <button
-                      onClick={() => setOpenItemMenu(false)}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors"
-                    >
-                      Add to Voice Quote
-                    </button>
-                    <button
-                      onClick={() => setOpenItemMenu(false)}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors"
-                    >
-                      Create Order
-                    </button>
-                    <button
-                      onClick={() => setOpenItemMenu(false)}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors flex items-center gap-2"
-                    >
-                      <Bell className="size-4" />
-                      Create Alert
-                    </button>
-                    <button
-                      onClick={() => setOpenItemMenu(false)}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors flex items-center justify-between"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Star className="size-4" />
-                        Add to Watchlist
-                      </span>
-                      <ChevronRight className="size-4" />
-                    </button>
-                    <button
-                      onClick={() => setOpenItemMenu(false)}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors flex items-center justify-between"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Search className="size-4" />
-                        View {selectedItem.symbol} in a widget
-                      </span>
-                      <ChevronRight className="size-4" />
-                    </button>
-                    <button
-                      onClick={() => setOpenItemMenu(false)}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors flex items-center gap-2"
-                    >
-                      <Copy className="size-4" />
-                      Copy {selectedItem.symbol}
-                    </button>
-                    <button
-                      onClick={() => setOpenItemMenu(false)}
-                      className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors flex items-center justify-between"
-                    >
-                      <span>Send {selectedItem.symbol} to</span>
-                      <ChevronRight className="size-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+           <StockActionMenu
+             open={!!(selectedItem && openItemMenu && menuPosition)}
+             position={menuPosition}
+             selectedItem={selectedItem}
+             onClose={() => setOpenItemMenu(false)}
+             onDelete={handleDeleteStock}
+             onMoveTop={handleMoveToTop}
+             pendingDelete={deleteWatchlistItem.isPending}
+           />
           </>
         )}
       </div>

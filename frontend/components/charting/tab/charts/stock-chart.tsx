@@ -7,13 +7,13 @@ import type { Historical } from "@/lib/types/historical"
 import { Loader2 } from "lucide-react"
 import { useScreenerBySymbol } from "@/hooks/use-screener"
 
-interface ChartingProps {
+interface StockChartProps {
   symbol: string
   range?: string
   interval?: string
 }
 
-export function Charting({ symbol, range = "1d", interval = "1m" }: ChartingProps) {
+export function StockChart({ symbol, range = "1d", interval = "1m" }: StockChartProps) {
   const chartContainerRef = React.useRef<HTMLDivElement>(null)
   const chartRef = React.useRef<IChartApi | null>(null)
   const candlestickSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null)

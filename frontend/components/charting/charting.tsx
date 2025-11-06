@@ -2,12 +2,10 @@
 
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
-import { Charting } from "@/components/screener/tab/charts/charting"
-import { SymbolSearch } from "@/components/symbol-search"
+import { StockChart } from "@/components/charting/tab/charts/stock-chart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-export function Screener() {
+export function Charting() {
   const searchParams = useSearchParams()
   const symbol = searchParams.get("symbol") || ""
   const [range, setRange] = React.useState("1d")
@@ -42,23 +40,9 @@ export function Screener() {
         <div className="flex flex-col gap-2 items-start">
           <h2 className="font-bold text-2xl mb-4">Screener</h2>
           <p className="text-muted-foreground mb-6">
-            Search for a stock symbol to view its chart and historical data.
+            Use the search bar in the header to find a stock symbol and view its chart and historical data.
           </p>
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Search for a Stock</CardTitle>
-            <CardDescription>
-              Use the search bar in the header or search below to find a stock symbol
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="max-w-md">
-              <SymbolSearch />
-            </div>
-          </CardContent>
-        </Card>
       </div>
     )
   }
@@ -81,12 +65,12 @@ export function Screener() {
           <TabsTrigger value="max">MAX</TabsTrigger>
         </TabsList>
 
-        {/* Render Charting component for each tab value - only active one is rendered */}
+        {/* Render StockChart component for each tab value - only active one is rendered */}
         {(Object.keys(rangeIntervalMap) as Array<keyof typeof rangeIntervalMap>).map((tabValue) => {
           const mapping = rangeIntervalMap[tabValue]
           return (
             <TabsContent key={tabValue} value={tabValue} className="mt-4">
-              <Charting symbol={symbol} range={mapping.range} interval={mapping.interval} />
+              <StockChart symbol={symbol} range={mapping.range} interval={mapping.interval} />
             </TabsContent>
           )
         })}
