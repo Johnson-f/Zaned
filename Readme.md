@@ -1,11 +1,11 @@
-# Screener
+# Zaned
 
 A full-stack application with Next.js frontend and Go backend, integrated with Supabase for authentication and database management.
 
 ## Project Structure
 
 ```
-screener/
+zaned/
 ├── frontend/          # Next.js application
 ├── backend/          # Go Fiber API server
 ├── database/         # Database migrations and schemas
@@ -15,7 +15,7 @@ screener/
 ## Features
 
 ### Frontend (Next.js)
-- Next.js 15 with App Router
+- Next.js 16 with App Router
 - Supabase authentication with SSR
 - Tailwind CSS for styling
 - shadcn/ui components
@@ -29,10 +29,9 @@ screener/
 - RESTful API structure (models, routes, services)
 
 ## Prerequisites
-
 - Bun (latest version)
 - Go 1.21+
-- Supabase account and project
+- Supabase account and projects
 
 ## Getting Started
 
@@ -118,7 +117,7 @@ The backend uses GORM for database operations. Models are defined in `backend/mo
 ## Tech Stack
 
 ### Frontend
-- Next.js 15
+- Next.js 16
 - React 19
 - TypeScript
 - Tailwind CSS

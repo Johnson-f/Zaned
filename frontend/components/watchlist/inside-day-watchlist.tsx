@@ -2,10 +2,12 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Star } from "lucide-react"
+import { Plus, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useInsideDaySymbols } from "@/hooks/use-historical"
 import { useWatchlists, useAddWatchlistItem } from "@/hooks/use-watchlist"
+import { AddToWatchlistDialog } from "@/components/watchlist/AddToWatchlistDialog"
+import { BuiltInStockActionMenu } from "@/components/watchlist/BuiltInStockActionMenu"
 
 const BUILT_IN_WATCHLIST_NAME = "Inside Day"
 
@@ -13,6 +15,10 @@ export default function InsideDayWatchlist() {
   const router = useRouter()
   const { data: insideDayData, isLoading, error } = useInsideDaySymbols(true)
   const symbols: string[] = insideDayData?.symbols || []
+  const [openAddDialog, setOpenAddDialog] = React.useState(false)
+  const [openItemMenu, setOpenItemMenu] = React.useState(false)
+  const [menuPosition, setMenuPosition] = React.useState<{ x: number; y: number } | null>(null)
+  const [selectedItem, setSelectedItem] = React.useState<{ symbol: string } | null>(null)
 
   const { data: watchlists = [] } = useWatchlists(true)
   const addWatchlistItem = useAddWatchlistItem()
@@ -35,8 +41,50 @@ export default function InsideDayWatchlist() {
     }
   }
 
+  // Handle double-click or right-click on stock item
+  const handleItemAction = (e: React.MouseEvent, symbol: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSelectedItem({ symbol })
+    setMenuPosition({ x: e.clientX, y: e.clientY })
+    setOpenItemMenu(true)
+  }
+
+  const handleItemDoubleClick = (e: React.MouseEvent, symbol: string) => {
+    handleItemAction(e, symbol)
+  }
+
+  const handleItemRightClick = (e: React.MouseEvent, symbol: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    handleItemAction(e, symbol)
+  }
+
   return (
     <div className="flex flex-col h-full">
+      {/* Add Stocks Button */}
+      {symbols.length > 0 && (
+        <div className="px-4 py-2 border-b">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => setOpenAddDialog(true)}
+          >
+            <Plus className="size-4" />
+            Add stocks
+          </Button>
+        </div>
+      )}
+
+      {/* Add To Watchlist Dialog */}
+      <AddToWatchlistDialog
+        open={openAddDialog}
+        onOpenChange={setOpenAddDialog}
+        symbols={symbols}
+        builtInWatchlistName={BUILT_IN_WATCHLIST_NAME}
+      />
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
@@ -51,7 +99,8 @@ export default function InsideDayWatchlist() {
               <div
                 key={sym}
                 className="px-4 py-3 hover:bg-sidebar-accent/50 transition-colors cursor-pointer select-none"
-                onDoubleClick={() => router.push(`/app/charting?symbol=${sym}`)}
+                onDoubleClick={(e) => handleItemDoubleClick(e, sym)}
+                onContextMenu={(e) => handleItemRightClick(e, sym)}
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -88,6 +137,18 @@ export default function InsideDayWatchlist() {
           </div>
         )}
       </div>
+
+      {/* Context Menu */}
+      <BuiltInStockActionMenu
+        open={openItemMenu}
+        position={menuPosition}
+        selectedItem={selectedItem}
+        onClose={() => {
+          setOpenItemMenu(false)
+          setSelectedItem(null)
+        }}
+        onAddToWatchlist={() => setOpenAddDialog(true)}
+      />
     </div>
   )
 }

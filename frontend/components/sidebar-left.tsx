@@ -56,7 +56,7 @@ const data = {
       icon: Sparkles,
     },
     {
-      title: "Screener",
+      title: "Charting",
       url: "/app/charting",
       icon: Search,
     },
