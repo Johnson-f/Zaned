@@ -7,9 +7,9 @@ import {
   Calendar,
   Command,
   Home,
-  Inbox,
+  Watch,
   MessageCircleQuestion,
-  Search,
+  ChartSpline,
   Settings2,
   Sparkles,
   Trash2,
@@ -58,12 +58,12 @@ const data = {
     {
       title: "Charting",
       url: "/app/charting",
-      icon: Search,
+      icon: ChartSpline,
     },
     {
       title: "Watchlist",
       url: "/app/watchlist",
-      icon: Inbox,
+      icon:  Watch,
     },
   ],
   navSecondary: [

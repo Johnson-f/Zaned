@@ -29,12 +29,92 @@ type FetcherService struct {
 	histService *HistoricalService
 }
 
+// getBaseURLs returns primary and fallback base URLs for failover
+// Both endpoints are hardcoded as defaults and can be overridden via environment variables
+func getBaseURLs() (string, string) {
+	// Hardcoded default endpoints
+	defaultPrimary := "https://finance-query.onrender.com"
+	defaultFallback := "https://finance-query-uzbi.onrender.com"
+
+	// Get from environment variables if set, otherwise use hardcoded defaults
+	primary := os.Getenv("FINANCE_QUERY_PRIMARY_URL")
+	if primary == "" {
+		primary = defaultPrimary
+	}
+
+	fallback := os.Getenv("FINANCE_QUERY_FALLBACK_URL")
+	if fallback == "" {
+		fallback = defaultFallback
+	}
+
+	return primary, fallback
+}
+
+// fetchWithFailover attempts to fetch from primary URL, falls back to secondary URL on immediate failure
+// Returns the response body and which endpoint was used
+// Fails over immediately if: network error, timeout, or HTTP error status (4xx, 5xx)
+func (s *FetcherService) fetchWithFailover(ctx context.Context, primaryURL, fallbackURL string, jobID string, batchNum, totalBatches int) (*http.Response, string, error) {
+	// Try primary endpoint first
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, primaryURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Try primary endpoint (single attempt)
+	resp, err := s.httpClient.Do(req)
+	primarySuccess := err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300
+
+	if primarySuccess {
+		if jobID != "" {
+			fmt.Printf("[%s] Batch %d/%d: Successfully fetched from primary endpoint\n", jobID, batchNum, totalBatches)
+		}
+		return resp, primaryURL, nil
+	}
+
+	// If primary failed, capture error message and close response
+	var primaryErrorMsg string
+	var primaryStatusCode int
+	if err != nil {
+		primaryErrorMsg = err.Error()
+	} else if resp != nil {
+		primaryStatusCode = resp.StatusCode
+		primaryErrorMsg = fmt.Sprintf("HTTP status %d", resp.StatusCode)
+		resp.Body.Close()
+	} else {
+		primaryErrorMsg = "unknown error"
+	}
+
+	if jobID != "" {
+		fmt.Printf("[%s] Batch %d/%d: Primary endpoint failed (%s), trying fallback: %s\n", jobID, batchNum, totalBatches, primaryErrorMsg, fallbackURL)
+	}
+
+	// Try fallback endpoint
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, fallbackURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create fallback request: %w", err)
+	}
+
+	resp, err = s.httpClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("both endpoints failed. Primary: %s, Fallback: %w", primaryErrorMsg, err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		fallbackStatusCode := resp.StatusCode
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("both endpoints failed. Primary: %s (status %d), Fallback: HTTP status %d", primaryErrorMsg, primaryStatusCode, fallbackStatusCode)
+	}
+
+	if jobID != "" {
+		fmt.Printf("[%s] Batch %d/%d: Successfully fetched from fallback endpoint\n", jobID, batchNum, totalBatches)
+	}
+	return resp, fallbackURL, nil
+}
+
 // NewFetcherService constructs a FetcherService with sensible defaults.
 func NewFetcherService() *FetcherService {
-	base := os.Getenv("FINANCE_QUERY_BASE_URL")
-	if base == "" {
-		base = "https://finance-query.onrender.com"
-	}
+	// Get primary URL (fallback is handled in getBaseURLs)
+	primaryBase, _ := getBaseURLs()
 
 	timeoutStr := os.Getenv("FETCHER_HTTP_TIMEOUT_SECONDS")
 	timeout := 15 * time.Second
@@ -47,7 +127,7 @@ func NewFetcherService() *FetcherService {
 	return &FetcherService{
 		db:          database.GetDB(),
 		httpClient:  &http.Client{Timeout: timeout},
-		baseURL:     base,
+		baseURL:     primaryBase,
 		histService: NewHistoricalService(),
 	}
 }
@@ -185,32 +265,18 @@ func (s *FetcherService) fetchBars(ctx context.Context, symbol, rangeParam, inte
 	if symbol == "" {
 		return nil, errors.New("symbol is required")
 	}
-	url := fmt.Sprintf("%s/v1/historical?symbol=%s&range=%s&interval=%s&epoch=true", s.baseURL, symbol, rangeParam, interval)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
+	// Get primary and fallback URLs
+	primaryBase, fallbackBase := getBaseURLs()
+	primaryURL := fmt.Sprintf("%s/v1/historical?symbol=%s&range=%s&interval=%s&epoch=true", primaryBase, symbol, rangeParam, interval)
+	fallbackURL := fmt.Sprintf("%s/v1/historical?symbol=%s&range=%s&interval=%s&epoch=true", fallbackBase, symbol, rangeParam, interval)
 
-	// simple retry: up to 3 attempts with backoff
-	var resp *http.Response
-	for attempt := 0; attempt < 3; attempt++ {
-		resp, err = s.httpClient.Do(req)
-		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			break
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-		time.Sleep(time.Duration(300*(attempt+1)) * time.Millisecond)
-	}
+	// Try with failover
+	resp, _, err := s.fetchWithFailover(ctx, primaryURL, fallbackURL, "", 0, 0)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
 
 	// The response is a JSON object keyed by epoch strings
 	var raw map[string]struct {
@@ -336,6 +402,11 @@ func (s *FetcherService) RunWatchlistPriceUpdate(ctx context.Context) (string, e
 
 // fetchSimpleQuotes calls the simple-quotes API for a batch of symbols
 func (s *FetcherService) fetchSimpleQuotes(ctx context.Context, symbols []string) ([]simpleQuote, error) {
+	return s.fetchSimpleQuotesWithLogging(ctx, symbols, "", 0, 0)
+}
+
+// fetchSimpleQuotesWithLogging calls the simple-quotes API with detailed logging
+func (s *FetcherService) fetchSimpleQuotesWithLogging(ctx context.Context, symbols []string, jobID string, batchNum, totalBatches int) ([]simpleQuote, error) {
 	if len(symbols) == 0 {
 		return nil, errors.New("symbols cannot be empty")
 	}
@@ -343,35 +414,62 @@ func (s *FetcherService) fetchSimpleQuotes(ctx context.Context, symbols []string
 	// Build URL with comma-separated symbols (URL encoded)
 	symbolsParam := strings.Join(symbols, ", ")
 	encodedSymbols := url.QueryEscape(symbolsParam)
-	apiURL := fmt.Sprintf("%s/v1/simple-quotes?symbols=%s", s.baseURL, encodedSymbols)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return nil, err
+
+	// Get primary and fallback URLs
+	primaryBase, fallbackBase := getBaseURLs()
+	primaryURL := fmt.Sprintf("%s/v1/simple-quotes?symbols=%s", primaryBase, encodedSymbols)
+	fallbackURL := fmt.Sprintf("%s/v1/simple-quotes?symbols=%s", fallbackBase, encodedSymbols)
+
+	// Only log detailed info if jobID is provided (for market aggregation)
+	if jobID != "" {
+		fmt.Printf("[%s] Batch %d/%d: Calling API: %s\n", jobID, batchNum, totalBatches, primaryURL)
 	}
 
-	// Retry logic: up to 3 attempts with backoff
-	var resp *http.Response
-	for attempt := 0; attempt < 3; attempt++ {
-		resp, err = s.httpClient.Do(req)
-		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			break
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-		time.Sleep(time.Duration(300*(attempt+1)) * time.Millisecond)
-	}
+	startTime := time.Now()
+	resp, usedURL, err := s.fetchWithFailover(ctx, primaryURL, fallbackURL, jobID, batchNum, totalBatches)
+	requestDuration := time.Since(startTime)
+
 	if err != nil {
+		if jobID != "" {
+			fmt.Printf("[%s] Batch %d/%d: ERROR: %v (duration: %v)\n", jobID, batchNum, totalBatches, err, requestDuration)
+		}
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
+
+	if jobID != "" {
+		fmt.Printf("[%s] Batch %d/%d: Successfully fetched from %s in %v\n", jobID, batchNum, totalBatches, usedURL, requestDuration)
 	}
 
+	// Read response body
 	var quotes []simpleQuote
-	if err := json.NewDecoder(resp.Body).Decode(&quotes); err != nil {
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&quotes); err != nil {
+		if jobID != "" {
+			fmt.Printf("[%s] Batch %d/%d: ERROR decoding JSON response: %v\n", jobID, batchNum, totalBatches, err)
+		}
 		return nil, err
+	}
+
+	if jobID != "" {
+		fmt.Printf("[%s] Batch %d/%d: Successfully fetched %d quotes in %v\n", jobID, batchNum, totalBatches, len(quotes), requestDuration)
+	}
+
+	// Log which symbols were successfully retrieved
+	if len(quotes) < len(symbols) && jobID != "" {
+		retrievedSymbols := make(map[string]bool)
+		for _, q := range quotes {
+			retrievedSymbols[q.Symbol] = true
+		}
+		missingSymbols := make([]string, 0)
+		for _, sym := range symbols {
+			if !retrievedSymbols[sym] {
+				missingSymbols = append(missingSymbols, sym)
+			}
+		}
+		if len(missingSymbols) > 0 {
+			fmt.Printf("[%s] Batch %d/%d: WARNING: %d symbols not found in response: %v\n", jobID, batchNum, totalBatches, len(missingSymbols), missingSymbols)
+		}
 	}
 
 	return quotes, nil
@@ -504,7 +602,7 @@ func (s *FetcherService) RunCompanyInfoIngestion(ctx context.Context) (string, e
 		default:
 		}
 
-		quotes, err := s.fetchDetailedQuotes(ctx, batch)
+		quotes, err := s.fetchDetailedQuotes(ctx, batch, "", 0, 0)
 		if err != nil {
 			// Log error but continue with next batch
 			continue
@@ -522,8 +620,102 @@ func (s *FetcherService) RunCompanyInfoIngestion(ctx context.Context) (string, e
 	return fmt.Sprintf("company-info-ingestion-%d", time.Now().UnixNano()), nil
 }
 
+// RunMarketAggregation fetches quotes for all stocks from screener table and aggregates them
+// for market statistics (up/down/unchanged counts). Suitable for cron trigger every 5 minutes.
+func (s *FetcherService) RunMarketAggregation(ctx context.Context) (string, error) {
+	jobID := fmt.Sprintf("market-aggregation-%d", time.Now().UnixNano())
+	startTime := time.Now()
+
+	fmt.Printf("[%s] Starting market aggregation...\n", jobID)
+
+	// Get all unique symbols from screener table
+	var symbols []string
+	if err := s.db.Model(&model.Screener{}).Distinct("symbol").Pluck("symbol", &symbols).Error; err != nil {
+		fmt.Printf("[%s] ERROR: Failed to load screener symbols: %v\n", jobID, err)
+		return "", fmt.Errorf("failed to load screener symbols: %w", err)
+	}
+
+	totalSymbols := len(symbols)
+	fmt.Printf("[%s] Loaded %d symbols from screener table\n", jobID, totalSymbols)
+
+	if totalSymbols == 0 {
+		fmt.Printf("[%s] No symbols found, skipping aggregation\n", jobID)
+		return jobID, nil
+	}
+
+	// Initialize market statistics service
+	statsService := NewMarketStatisticsService()
+
+	// Fetch quotes for all symbols in batches (API may have limits, so we'll do in chunks of 50)
+	batchSize := 50
+	totalBatches := (totalSymbols + batchSize - 1) / batchSize
+	successfulBatches := 0
+	failedBatches := 0
+	totalQuotesProcessed := 0
+
+	fmt.Printf("[%s] Processing %d batches of %d symbols each\n", jobID, totalBatches, batchSize)
+
+	for i := 0; i < totalSymbols; i += batchSize {
+		batchNum := (i / batchSize) + 1
+		end := i + batchSize
+		if end > totalSymbols {
+			end = totalSymbols
+		}
+		batch := symbols[i:end]
+
+		// Check for context cancellation
+		select {
+		case <-ctx.Done():
+			fmt.Printf("[%s] Cancelled: context deadline exceeded at batch %d/%d\n", jobID, batchNum, totalBatches)
+			return "", ctx.Err()
+		default:
+		}
+
+		fmt.Printf("[%s] Processing batch %d/%d (%d symbols): %v\n", jobID, batchNum, totalBatches, len(batch), batch)
+
+		quotes, err := s.fetchSimpleQuotesWithLogging(ctx, batch, jobID, batchNum, totalBatches)
+		if err != nil {
+			failedBatches++
+			fmt.Printf("[%s] ERROR: Failed to fetch quotes for batch %d/%d: %v\n", jobID, batchNum, totalBatches, err)
+			continue
+		}
+
+		if len(quotes) == 0 {
+			fmt.Printf("[%s] WARNING: Batch %d/%d returned 0 quotes (all symbols may be invalid)\n", jobID, batchNum, totalBatches)
+			failedBatches++
+			continue
+		}
+
+		// Aggregate the quotes
+		if err := statsService.AggregateQuotes(ctx, quotes); err != nil {
+			failedBatches++
+			fmt.Printf("[%s] ERROR: Failed to aggregate quotes for batch %d/%d: %v\n", jobID, batchNum, totalBatches, err)
+			continue
+		}
+
+		successfulBatches++
+		totalQuotesProcessed += len(quotes)
+		fmt.Printf("[%s] Batch %d/%d completed: %d quotes processed (expected %d symbols)\n", jobID, batchNum, totalBatches, len(quotes), len(batch))
+	}
+
+	// Get final stats
+	finalStats, err := statsService.GetCurrentDayStats()
+	if err != nil {
+		fmt.Printf("[%s] WARNING: Failed to get final stats: %v\n", jobID, err)
+	} else {
+		fmt.Printf("[%s] Final statistics - Up: %d, Down: %d, Unchanged: %d, Total: %d\n",
+			jobID, finalStats["up"], finalStats["down"], finalStats["unchanged"], finalStats["total"])
+	}
+
+	duration := time.Since(startTime)
+	fmt.Printf("[%s] Aggregation completed in %v - Successful batches: %d/%d, Failed: %d, Quotes processed: %d\n",
+		jobID, duration, successfulBatches, totalBatches, failedBatches, totalQuotesProcessed)
+
+	return jobID, nil
+}
+
 // fetchDetailedQuotes calls the quotes API for a batch of symbols
-func (s *FetcherService) fetchDetailedQuotes(ctx context.Context, symbols []string) ([]detailedQuote, error) {
+func (s *FetcherService) fetchDetailedQuotes(ctx context.Context, symbols []string, jobID string, batchNum, totalBatches int) ([]detailedQuote, error) {
 	if len(symbols) == 0 {
 		return nil, errors.New("symbols cannot be empty")
 	}
@@ -531,35 +723,63 @@ func (s *FetcherService) fetchDetailedQuotes(ctx context.Context, symbols []stri
 	// Build URL with comma-separated symbols (URL encoded)
 	symbolsParam := strings.Join(symbols, ", ")
 	encodedSymbols := url.QueryEscape(symbolsParam)
-	apiURL := fmt.Sprintf("%s/v1/quotes?symbols=%s", s.baseURL, encodedSymbols)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return nil, err
+
+	// Get primary and fallback URLs for quotes API
+	primaryBase, fallbackBase := getBaseURLs()
+	primaryURL := fmt.Sprintf("%s/v1/quotes?symbols=%s", primaryBase, encodedSymbols)
+	fallbackURL := fmt.Sprintf("%s/v1/quotes?symbols=%s", fallbackBase, encodedSymbols)
+
+	// Only log detailed info if jobID is provided (for market aggregation)
+	if jobID != "" {
+		fmt.Printf("[%s] Batch %d/%d: Calling API: %s\n", jobID, batchNum, totalBatches, primaryURL)
 	}
 
-	// Retry logic: up to 3 attempts with backoff
-	var resp *http.Response
-	for attempt := 0; attempt < 3; attempt++ {
-		resp, err = s.httpClient.Do(req)
-		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			break
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-		time.Sleep(time.Duration(300*(attempt+1)) * time.Millisecond)
-	}
+	startTime := time.Now()
+	resp, usedURL, err := s.fetchWithFailover(ctx, primaryURL, fallbackURL, jobID, batchNum, totalBatches)
+	requestDuration := time.Since(startTime)
+
 	if err != nil {
+		if jobID != "" {
+			fmt.Printf("[%s] Batch %d/%d: ERROR: %v (duration: %v)\n", jobID, batchNum, totalBatches, err, requestDuration)
+		}
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
+
+	if jobID != "" {
+		fmt.Printf("[%s] Batch %d/%d: Successfully fetched from %s in %v\n", jobID, batchNum, totalBatches, usedURL, requestDuration)
 	}
 
+	// Read response body
+	bodyReader := resp.Body
 	var quotes []detailedQuote
-	if err := json.NewDecoder(resp.Body).Decode(&quotes); err != nil {
+	decoder := json.NewDecoder(bodyReader)
+	if err := decoder.Decode(&quotes); err != nil {
+		if jobID != "" {
+			fmt.Printf("[%s] Batch %d/%d: ERROR decoding JSON response: %v\n", jobID, batchNum, totalBatches, err)
+		}
 		return nil, err
+	}
+
+	if jobID != "" {
+		fmt.Printf("[%s] Batch %d/%d: Successfully fetched %d quotes in %v\n", jobID, batchNum, totalBatches, len(quotes), requestDuration)
+	}
+
+	// Log which symbols were successfully retrieved
+	if len(quotes) < len(symbols) && jobID != "" {
+		retrievedSymbols := make(map[string]bool)
+		for _, q := range quotes {
+			retrievedSymbols[q.Symbol] = true
+		}
+		missingSymbols := make([]string, 0)
+		for _, sym := range symbols {
+			if !retrievedSymbols[sym] {
+				missingSymbols = append(missingSymbols, sym)
+			}
+		}
+		if len(missingSymbols) > 0 {
+			fmt.Printf("[%s] Batch %d/%d: WARNING: %d symbols not found in response: %v\n", jobID, batchNum, totalBatches, len(missingSymbols), missingSymbols)
+		}
 	}
 
 	return quotes, nil
@@ -709,38 +929,17 @@ func (s *FetcherService) fetchFinancials(ctx context.Context, symbol, statementT
 		return nil, errors.New("symbol, statement type, and frequency are required")
 	}
 
-	// Use different base URL for financials API
-	baseURL := os.Getenv("FINANCE_QUERY_FINANCIALS_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://finance-query-uzbi.onrender.com"
-	}
+	// Get primary and fallback URLs for financials API
+	primaryBase, fallbackBase := getBaseURLs()
+	primaryURL := fmt.Sprintf("%s/v1/financials/%s?statement=%s&frequency=%s", primaryBase, symbol, statementType, frequency)
+	fallbackURL := fmt.Sprintf("%s/v1/financials/%s?statement=%s&frequency=%s", fallbackBase, symbol, statementType, frequency)
 
-	// Build URL
-	apiURL := fmt.Sprintf("%s/v1/financials/%s?statement=%s&frequency=%s", baseURL, symbol, statementType, frequency)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Retry logic: up to 3 attempts with backoff
-	var resp *http.Response
-	for attempt := 0; attempt < 3; attempt++ {
-		resp, err = s.httpClient.Do(req)
-		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			break
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-		time.Sleep(time.Duration(300*(attempt+1)) * time.Millisecond)
-	}
+	// Try with failover
+	resp, _, err := s.fetchWithFailover(ctx, primaryURL, fallbackURL, "", 0, 0)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
 
 	var financialData financialsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&financialData); err != nil {

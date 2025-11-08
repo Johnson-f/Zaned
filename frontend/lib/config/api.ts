@@ -163,6 +163,18 @@ export const API_ENDPOINTS = {
     },
   },
 
+  // Market Statistics endpoints (public)
+  MARKET_STATISTICS: {
+    BASE: (startDate?: string, endDate?: string) => {
+      const params = new URLSearchParams();
+      if (startDate) params.append("startDate", startDate);
+      if (endDate) params.append("endDate", endDate);
+      const query = params.toString();
+      return `${API_BASE_URL}/api/market-statistics${query ? `?${query}` : ""}`;
+    },
+    CURRENT: `${API_BASE_URL}/api/market-statistics/current`,
+  },
+
   // Admin endpoints (public, no authentication)
   ADMIN: {
     INGEST_HISTORICALS: (concurrency?: number) => {
@@ -174,6 +186,8 @@ export const API_ENDPOINTS = {
     UPDATE_WATCHLIST_PRICES: `${API_BASE_URL}/api/admin/watchlist/update-prices`,
     INGEST_COMPANY_INFO: `${API_BASE_URL}/api/admin/ingest/company-info`,
     INGEST_FUNDAMENTAL_DATA: `${API_BASE_URL}/api/admin/ingest/fundamental-data`,
+    MARKET_STATISTICS_AGGREGATE: `${API_BASE_URL}/api/admin/market-statistics/aggregate`,
+    MARKET_STATISTICS_STORE_EOD: `${API_BASE_URL}/api/admin/market-statistics/store-eod`,
   },
 
   // Protected routes (require JWT authentication)

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"fmt"
 	"screener/backend/model"
 	"screener/backend/service"
 	"screener/backend/supabase"
@@ -118,6 +119,110 @@ func SetupRoutes(app *fiber.App) {
 				"success":     true,
 				"job_id":      jobID,
 				"accepted_at": time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		// Market statistics aggregation endpoint (public): trigger market aggregation (call every 5 minutes via external cron)
+		public.Post("/admin/market-statistics/aggregate", func(c *fiber.Ctx) error {
+			fetcher := service.NewFetcherService()
+			jobID := fmt.Sprintf("market-aggregation-%d", time.Now().UnixNano())
+
+			// Start aggregation in background to avoid timeout
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+				defer cancel()
+				_, err := fetcher.RunMarketAggregation(ctx)
+				if err != nil {
+					// Log error but don't block the response
+					fmt.Printf("Market aggregation error: %v\n", err)
+				}
+			}()
+
+			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+				"success":     true,
+				"job_id":      jobID,
+				"accepted_at": time.Now().UTC().Format(time.RFC3339),
+				"message":     "Aggregation started in background",
+			})
+		})
+
+		// Market statistics end-of-day storage endpoint (public): trigger end-of-day storage (call at market close via external cron)
+		public.Post("/admin/market-statistics/store-eod", func(c *fiber.Ctx) error {
+			statsService := service.NewMarketStatisticsService()
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+			defer cancel()
+
+			err := statsService.StoreEndOfDayStats(ctx)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success":     true,
+				"message":     "End-of-day statistics stored successfully",
+				"accepted_at": time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		// Market statistics historical data endpoint (public): get historical market statistics for charting
+		public.Get("/market-statistics", func(c *fiber.Ctx) error {
+			statsService := service.NewMarketStatisticsService()
+			ctx := c.Context()
+
+			// Parse query parameters
+			startDateStr := c.Query("startDate")
+			endDateStr := c.Query("endDate")
+
+			// Default to last 30 days if not provided
+			startDate := time.Now().AddDate(0, 0, -30)
+			endDate := time.Now()
+
+			if startDateStr != "" {
+				if parsed, err := time.Parse("2006-01-02", startDateStr); err == nil {
+					startDate = parsed
+				}
+			}
+			if endDateStr != "" {
+				if parsed, err := time.Parse("2006-01-02", endDateStr); err == nil {
+					endDate = parsed
+				}
+			}
+
+			stats, err := statsService.GetHistoricalStats(ctx, startDate, endDate)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    stats,
+			})
+		})
+
+		// Market statistics current day endpoint (public): get today's real-time aggregated stats
+		public.Get("/market-statistics/current", func(c *fiber.Ctx) error {
+			statsService := service.NewMarketStatisticsService()
+
+			stats, err := statsService.GetCurrentDayStats()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data":    stats,
 			})
 		})
 
