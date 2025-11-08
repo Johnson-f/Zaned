@@ -12,14 +12,6 @@ export const API_ENDPOINTS = {
 
   // Public screening endpoints (no authentication required)
   SCREENING: {
-    // Inside day detection
-    INSIDE_DAY: `${API_BASE_URL}/api/inside-day`,
-
-    // Highest volume detection
-    HIGH_VOLUME_QUARTER: `${API_BASE_URL}/api/high-volume-quarter`,
-    HIGH_VOLUME_YEAR: `${API_BASE_URL}/api/high-volume-year`,
-    HIGH_VOLUME_EVER: `${API_BASE_URL}/api/high-volume-ever`,
-
     // ADR (Average Daily Range) screening
     ADR_SCREEN: (range?: string, interval?: string, lookback?: number, minAdr?: number, maxAdr?: number) => {
       const params = new URLSearchParams();
@@ -173,6 +165,7 @@ export const API_ENDPOINTS = {
       return `${API_BASE_URL}/api/market-statistics${query ? `?${query}` : ""}`;
     },
     CURRENT: `${API_BASE_URL}/api/market-statistics/current`,
+    LIVE: `${API_BASE_URL}/api/market-statistics/live`,
   },
 
   // Admin endpoints (public, no authentication)
@@ -188,6 +181,20 @@ export const API_ENDPOINTS = {
     INGEST_FUNDAMENTAL_DATA: `${API_BASE_URL}/api/admin/ingest/fundamental-data`,
     MARKET_STATISTICS_AGGREGATE: `${API_BASE_URL}/api/admin/market-statistics/aggregate`,
     MARKET_STATISTICS_STORE_EOD: `${API_BASE_URL}/api/admin/market-statistics/store-eod`,
+    SAVE_INSIDE_DAY: `${API_BASE_URL}/api/admin/screener/save-inside-day`,
+    SAVE_HIGH_VOLUME_QUARTER: `${API_BASE_URL}/api/admin/screener/save-high-volume-quarter`,
+    SAVE_HIGH_VOLUME_YEAR: `${API_BASE_URL}/api/admin/screener/save-high-volume-year`,
+    SAVE_HIGH_VOLUME_EVER: `${API_BASE_URL}/api/admin/screener/save-high-volume-ever`,
+  },
+
+  // Screener Results endpoints (public, cached results with time period filtering)
+  SCREENER_RESULTS: {
+    BASE: (type: string, period?: string) => {
+      const params = new URLSearchParams();
+      params.append("type", type);
+      if (period) params.append("period", period);
+      return `${API_BASE_URL}/api/screener-results?${params.toString()}`;
+    },
   },
 
   // Protected routes (require JWT authentication)

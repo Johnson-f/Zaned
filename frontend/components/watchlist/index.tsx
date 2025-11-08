@@ -20,7 +20,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { watchlistKeys } from "@/hooks/use-watchlist"
 import type { Watchlist } from "@/lib/types/watchlist"
 import { formatAfterHours, getAfterHoursColor, formatPrice } from "@/components/watchlist/utils"
-import { useInsideDaySymbols, useHighVolumeQuarterSymbols, useHighVolumeYearSymbols, useHighVolumeEverSymbols } from "@/hooks/use-historical"
+import { useScreenerResults } from "@/hooks/use-historical"
 import InsideDayWatchlist from "@/components/watchlist/inside-day-watchlist"
 import HighestVolumeQuarterWatchlist from "@/components/watchlist/highest-volume-quarter"
 import HighestVolumeYearWatchlist from "@/components/watchlist/highest-volume-year"
@@ -79,20 +79,17 @@ export function Watchlist() {
   const addWatchlistItem = useAddWatchlistItem()
   const deleteWatchlistItem = useDeleteWatchlistItem()
 
-  // Fetch inside day symbols count
-  const { data: insideDayData } = useInsideDaySymbols(!!user)
+  // Fetch screener results counts
+  const { data: insideDayData } = useScreenerResults("inside_day", "all", !!user)
   const insideDayCount = insideDayData?.count ?? 0
 
-  // Fetch highest volume quarter symbols count
-  const { data: highestVolumeQuarterData } = useHighVolumeQuarterSymbols(!!user)
+  const { data: highestVolumeQuarterData } = useScreenerResults("high_volume_quarter", "all", !!user)
   const highestVolumeQuarterCount = highestVolumeQuarterData?.count ?? 0
 
-  // Fetch highest volume year symbols count
-  const { data: highestVolumeYearData } = useHighVolumeYearSymbols(!!user)
+  const { data: highestVolumeYearData } = useScreenerResults("high_volume_year", "all", !!user)
   const highestVolumeYearCount = highestVolumeYearData?.count ?? 0
 
-  // Fetch highest volume ever symbols count
-  const { data: highestVolumeEverData } = useHighVolumeEverSymbols(!!user)
+  const { data: highestVolumeEverData } = useScreenerResults("high_volume_ever", "all", !!user)
   const highestVolumeEverCount = highestVolumeEverData?.count ?? 0
 
   // Ensure "Inside Day" watchlist exists (only once, at parent level)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"screener/backend/database"
 	"screener/backend/model"
+	"screener/backend/service/filtering"
 	"time"
 
 	"gorm.io/gorm"
@@ -251,198 +252,6 @@ func (s *HistoricalService) GetHistoricalBySymbolRangeInterval(symbol, rangePara
 	}
 
 	return historical, nil
-}
-
-// GetSymbolsWithDailyInsideDay scans all symbols in the historical table
-// and returns those whose latest daily bar is an inside day compared to the
-// immediately previous daily bar.
-// An inside day means: current high < previous high AND current low > previous low
-func (s *HistoricalService) GetSymbolsWithDailyInsideDay() ([]string, error) {
-	// Fetch all unique symbols that have daily records (10y range, 1d interval)
-	var symbols []string
-	if err := s.db.Model(&model.Historical{}).
-		Where("range = ? AND interval = ?", "10y", "1d").
-		Distinct("symbol").
-		Pluck("symbol", &symbols).Error; err != nil {
-		return nil, fmt.Errorf("failed to load symbols: %w", err)
-	}
-
-	if len(symbols) == 0 {
-		return []string{}, nil
-	}
-
-	matches := make([]string, 0)
-	for _, sym := range symbols {
-		// Get last two DAILY bars (from 10y range) by epoch desc for this symbol
-		var rows []model.Historical
-		if err := s.db.Where("symbol = ? AND range = ? AND interval = ?", sym, "10y", "1d").
-			Order("epoch DESC").
-			Limit(2).
-			Find(&rows).Error; err != nil {
-			continue
-		}
-		if len(rows) < 2 {
-			continue
-		}
-
-		// rows[0] = most recent (current day)
-		// rows[1] = previous day
-		current := rows[0]
-		previous := rows[1]
-
-		// Inside day condition: current high < previous high AND current low > previous low
-		if current.High < previous.High && current.Low > previous.Low {
-			matches = append(matches, sym)
-		}
-	}
-
-	return matches, nil
-}
-
-// GetSymbolsWithHighestVolumeInQuarter scans all symbols' daily bars (interval='1d')
-// within the last 90 days (inclusive) and returns those whose most recent daily bar
-// has the highest volume in that 90-day window.
-func (s *HistoricalService) GetSymbolsWithHighestVolumeInQuarter() ([]string, error) {
-	// Collect distinct symbols that have daily bars
-	var symbols []string
-	if err := s.db.Model(&model.Historical{}).
-		Where("interval = ?", "1d").
-		Distinct("symbol").
-		Pluck("symbol", &symbols).Error; err != nil {
-		return nil, fmt.Errorf("failed to load symbols: %w", err)
-	}
-	if len(symbols) == 0 {
-		return []string{}, nil
-	}
-
-	// Epoch window: now and 90 days ago
-	now := time.Now()
-	ninetyDaysAgo := now.AddDate(0, 0, -90)
-	maxEpoch := now.Unix()
-	minEpoch := ninetyDaysAgo.Unix()
-
-	matches := make([]string, 0)
-	for _, sym := range symbols {
-		// Fetch last 90 days of daily bars for this symbol
-		var rows []model.Historical
-		if err := s.db.Where("symbol = ? AND interval = ? AND epoch BETWEEN ? AND ?", sym, "1d", minEpoch, maxEpoch).
-			Order("epoch ASC").
-			Find(&rows).Error; err != nil {
-			continue
-		}
-		if len(rows) == 0 {
-			continue
-		}
-
-		// Find max volume in window and compare with last bar
-		var maxVol int64 = 0
-		for _, r := range rows {
-			if r.Volume > maxVol {
-				maxVol = r.Volume
-			}
-		}
-		last := rows[len(rows)-1]
-		if last.Volume >= maxVol { // include ties as "highest"
-			matches = append(matches, sym)
-		}
-	}
-
-	return matches, nil
-}
-
-// GetSymbolsWithHighestVolumeInYear scans all symbols' daily bars (interval='1d')
-// within the last 365 days (inclusive) and returns those whose most recent daily bar
-// has the highest volume in that 365-day window.
-func (s *HistoricalService) GetSymbolsWithHighestVolumeInYear() ([]string, error) {
-	// Collect distinct symbols that have daily bars
-	var symbols []string
-	if err := s.db.Model(&model.Historical{}).
-		Where("interval = ?", "1d").
-		Distinct("symbol").
-		Pluck("symbol", &symbols).Error; err != nil {
-		return nil, fmt.Errorf("failed to load symbols: %w", err)
-	}
-	if len(symbols) == 0 {
-		return []string{}, nil
-	}
-
-	// Epoch window: now and 365 days ago
-	now := time.Now()
-	oneYearAgo := now.AddDate(0, 0, -365)
-	maxEpoch := now.Unix()
-	minEpoch := oneYearAgo.Unix()
-
-	matches := make([]string, 0)
-	for _, sym := range symbols {
-		// Fetch last 365 days of daily bars for this symbol
-		var rows []model.Historical
-		if err := s.db.Where("symbol = ? AND interval = ? AND epoch BETWEEN ? AND ?", sym, "1d", minEpoch, maxEpoch).
-			Order("epoch ASC").
-			Find(&rows).Error; err != nil {
-			continue
-		}
-		if len(rows) == 0 {
-			continue
-		}
-
-		// Find max volume in window and compare with last bar
-		var maxVol int64 = 0
-		for _, r := range rows {
-			if r.Volume > maxVol {
-				maxVol = r.Volume
-			}
-		}
-		last := rows[len(rows)-1]
-		if last.Volume >= maxVol { // include ties as "highest"
-			matches = append(matches, sym)
-		}
-	}
-
-	return matches, nil
-}
-
-// GetSymbolsWithHighestVolumeEver scans all symbols' daily bars (interval='1d')
-// across all available history in the database and returns those whose most recent
-// daily bar has the highest volume ever observed for that symbol.
-func (s *HistoricalService) GetSymbolsWithHighestVolumeEver() ([]string, error) {
-	// Collect distinct symbols that have daily bars
-	var symbols []string
-	if err := s.db.Model(&model.Historical{}).
-		Where("interval = ?", "1d").
-		Distinct("symbol").
-		Pluck("symbol", &symbols).Error; err != nil {
-		return nil, fmt.Errorf("failed to load symbols: %w", err)
-	}
-	if len(symbols) == 0 {
-		return []string{}, nil
-	}
-
-	matches := make([]string, 0)
-	for _, sym := range symbols {
-		// Fetch ALL daily bars for this symbol
-		var rows []model.Historical
-		if err := s.db.Where("symbol = ? AND interval = ?", sym, "1d").
-			Order("epoch ASC").
-			Find(&rows).Error; err != nil {
-			continue
-		}
-		if len(rows) == 0 {
-			continue
-		}
-
-		var maxVol int64 = 0
-		for _, r := range rows {
-			if r.Volume > maxVol {
-				maxVol = r.Volume
-			}
-		}
-		last := rows[len(rows)-1]
-		if last.Volume >= maxVol { // include ties as "highest"
-			matches = append(matches, sym)
-		}
-	}
-
-	return matches, nil
 }
 
 // GetSymbolsByADR scans all symbols with the given range/interval and returns those
@@ -887,4 +696,69 @@ func (s *HistoricalService) UpdateHistorical(id string, historical *model.Histor
 	}
 
 	return nil
+}
+
+// SaveInsideDayResults saves current inside day symbols to database
+// This method delegates to the filtering service for inside-day logic
+func (s *HistoricalService) SaveInsideDayResults() error {
+	insideDayService := filtering.NewInsideDayService()
+	return insideDayService.SaveInsideDayResults()
+}
+
+// SaveHighVolumeQuarterResults saves high volume quarter symbols
+// This method delegates to the filtering service for high-volume-quarter logic
+func (s *HistoricalService) SaveHighVolumeQuarterResults() error {
+	highVolumeQuarterService := filtering.NewHighVolumeQuarterService()
+	return highVolumeQuarterService.SaveHighVolumeQuarterResults()
+}
+
+// SaveHighVolumeYearResults saves high volume year symbols
+// This method delegates to the filtering service for high-volume-year logic
+func (s *HistoricalService) SaveHighVolumeYearResults() error {
+	highVolumeYearService := filtering.NewHighVolumeYearService()
+	return highVolumeYearService.SaveHighVolumeYearResults()
+}
+
+// SaveHighVolumeEverResults saves high volume ever symbols
+// This method delegates to the filtering service for high-volume-ever logic
+func (s *HistoricalService) SaveHighVolumeEverResults() error {
+	highVolumeEverService := filtering.NewHighVolumeEverService()
+	return highVolumeEverService.SaveHighVolumeEverResults()
+}
+
+// GetScreenerResults fetches screener results with time period filtering
+func (s *HistoricalService) GetScreenerResults(resultType string, period string) ([]string, error) {
+	query := s.db.Model(&model.ScreenerResult{}).
+		Where("type = ?", resultType)
+
+	now := time.Now()
+	var startDate time.Time
+
+	switch period {
+	case "7d":
+		startDate = now.AddDate(0, 0, -7)
+	case "30d":
+		startDate = now.AddDate(0, 0, -30)
+	case "90d":
+		startDate = now.AddDate(0, 0, -90)
+	case "ytd":
+		startDate = time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
+	case "all":
+		// No date filter for "all time"
+		startDate = time.Time{}
+	default:
+		return nil, fmt.Errorf("invalid period: %s. Valid periods: 7d, 30d, 90d, ytd, all", period)
+	}
+
+	if !startDate.IsZero() {
+		query = query.Where("date >= ?", startDate)
+	}
+
+	// Get distinct symbols
+	var symbols []string
+	if err := query.Distinct("symbol").Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to fetch screener results: %w", err)
+	}
+
+	return symbols, nil
 }

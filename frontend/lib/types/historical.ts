@@ -65,3 +65,14 @@ export interface ApiSuccess<T> {
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
+// Screener Results types
+export type ScreenerResultType = "inside_day" | "high_volume_quarter" | "high_volume_year" | "high_volume_ever";
+export type ScreenerResultPeriod = "7d" | "30d" | "90d" | "ytd" | "all";
+
+export interface ScreenerResultsResponse {
+  symbols: string[];
+  count: number;
+  type: string;
+  period: string;
+}
+

@@ -4,7 +4,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useInsideDaySymbols } from "@/hooks/use-historical"
+import { useScreenerResults } from "@/hooks/use-historical"
 import { useWatchlists, useAddWatchlistItem } from "@/hooks/use-watchlist"
 import { AddToWatchlistDialog } from "@/components/watchlist/AddToWatchlistDialog"
 import { BuiltInStockActionMenu } from "@/components/watchlist/BuiltInStockActionMenu"
@@ -13,8 +13,8 @@ const BUILT_IN_WATCHLIST_NAME = "Inside Day"
 
 export default function InsideDayWatchlist() {
   const router = useRouter()
-  const { data: insideDayData, isLoading, error } = useInsideDaySymbols(true)
-  const symbols: string[] = insideDayData?.symbols || []
+  const { data: screenerData, isLoading, error } = useScreenerResults("inside_day", "all", true)
+  const symbols: string[] = screenerData?.symbols || []
   const [openAddDialog, setOpenAddDialog] = React.useState(false)
   const [openItemMenu, setOpenItemMenu] = React.useState(false)
   const [menuPosition, setMenuPosition] = React.useState<{ x: number; y: number } | null>(null)

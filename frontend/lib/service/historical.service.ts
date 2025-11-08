@@ -81,36 +81,15 @@ export async function getHistoricalBySymbol(
   );
 }
 
-export async function getInsideDaySymbols(): Promise<
-  ApiResponse<{ symbols: string[]; count: number }>
-> {
-  return fetchApi<{ symbols: string[]; count: number }>(
-    API_ENDPOINTS.SCREENING.INSIDE_DAY
-  );
-}
-
-export async function getHighVolumeQuarterSymbols(): Promise<
-  ApiResponse<{ symbols: string[]; count: number }>
-> {
-  return fetchApi<{ symbols: string[]; count: number }>(
-    API_ENDPOINTS.SCREENING.HIGH_VOLUME_QUARTER
-  );
-}
-
-export async function getHighVolumeYearSymbols(): Promise<
-  ApiResponse<{ symbols: string[]; count: number }>
-> {
-  return fetchApi<{ symbols: string[]; count: number }>(
-    API_ENDPOINTS.SCREENING.HIGH_VOLUME_YEAR
-  );
-}
-
-export async function getHighVolumeEverSymbols(): Promise<
-  ApiResponse<{ symbols: string[]; count: number }>
-> {
-  return fetchApi<{ symbols: string[]; count: number }>(
-    API_ENDPOINTS.SCREENING.HIGH_VOLUME_EVER
-  );
+/**
+ * Get screener results with time period filtering
+ */
+export async function getScreenerResults(
+  type: string,
+  period?: string
+): Promise<ApiResponse<{ symbols: string[]; count: number; type: string; period: string }>> {
+  const url = API_ENDPOINTS.SCREENER_RESULTS.BASE(type, period);
+  return fetchApi<{ symbols: string[]; count: number; type: string; period: string }>(url);
 }
 
 export async function getAdrScreen(params: {

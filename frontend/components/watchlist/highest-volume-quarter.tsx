@@ -4,7 +4,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useHighVolumeQuarterSymbols } from "@/hooks/use-historical"
+import { useScreenerResults } from "@/hooks/use-historical"
 import { useWatchlists, useAddWatchlistItem } from "@/hooks/use-watchlist"
 import { AddToWatchlistDialog } from "@/components/watchlist/AddToWatchlistDialog"
 import { BuiltInStockActionMenu } from "@/components/watchlist/BuiltInStockActionMenu"
@@ -13,8 +13,8 @@ const BUILT_IN_WATCHLIST_NAME = "Highest Volume Quarter"
 
 export default function HighestVolumeQuarterWatchlist() {
   const router = useRouter()
-  const { data: highVolumeQuarterData, isLoading, error } = useHighVolumeQuarterSymbols(true)
-  const symbols: string[] = highVolumeQuarterData?.symbols || []
+  const { data: screenerData, isLoading, error } = useScreenerResults("high_volume_quarter", "all", true)
+  const symbols: string[] = screenerData?.symbols || []
   const [openAddDialog, setOpenAddDialog] = React.useState(false)
   const [openItemMenu, setOpenItemMenu] = React.useState(false)
   const [menuPosition, setMenuPosition] = React.useState<{ x: number; y: number } | null>(null)

@@ -50,10 +50,8 @@ export const historicalKeys = {
     [...historicalKeys.all, "by-symbol", symbol, range, interval] as const,
   // Screening query keys
   screening: () => [...historicalKeys.all, "screening"] as const,
-  insideDay: () => [...historicalKeys.screening(), "inside-day"] as const,
-  highVolumeQuarter: () => [...historicalKeys.screening(), "high-volume-quarter"] as const,
-  highVolumeYear: () => [...historicalKeys.screening(), "high-volume-year"] as const,
-  highVolumeEver: () => [...historicalKeys.screening(), "high-volume-ever"] as const,
+  screenerResults: (type: string, period?: string) =>
+    [...historicalKeys.screening(), "screener-results", type, period] as const,
   adrScreen: (params?: { range?: string; interval?: string; lookback?: number; minAdr?: number; maxAdr?: number }) =>
     [...historicalKeys.screening(), "adr-screen", params] as const,
   atrScreen: (params?: { range?: string; interval?: string; lookback?: number; minAtr?: number; maxAtr?: number }) =>
@@ -146,64 +144,20 @@ export function useHistoricalBySymbol(
  * Public Screening Hooks
  */
 
-export function useInsideDaySymbols(enabled: boolean = true) {
+/**
+ * Hook to get screener results with time period filtering
+ */
+export function useScreenerResults(
+  type: "inside_day" | "high_volume_quarter" | "high_volume_year" | "high_volume_ever",
+  period: "7d" | "30d" | "90d" | "ytd" | "all" = "all",
+  enabled: boolean = true
+) {
   return useQuery({
-    queryKey: historicalKeys.insideDay(),
+    queryKey: historicalKeys.screenerResults(type, period),
     queryFn: async () => {
-      const response = await historicalService.getInsideDaySymbols();
+      const response = await historicalService.getScreenerResults(type, period);
       if (!response.success) {
-        throw new Error(response.message || "Failed to fetch inside day symbols");
-      }
-      return response.data;
-    },
-    enabled,
-    ...CACHE_CONFIG.SCREENING,
-    placeholderData: (previousData) => previousData,
-    structuralSharing: true,
-  });
-}
-
-export function useHighVolumeQuarterSymbols(enabled: boolean = true) {
-  return useQuery({
-    queryKey: historicalKeys.highVolumeQuarter(),
-    queryFn: async () => {
-      const response = await historicalService.getHighVolumeQuarterSymbols();
-      if (!response.success) {
-        throw new Error(response.message || "Failed to fetch high volume quarter symbols");
-      }
-      return response.data;
-    },
-    enabled,
-    ...CACHE_CONFIG.SCREENING,
-    placeholderData: (previousData) => previousData,
-    structuralSharing: true,
-  });
-}
-
-export function useHighVolumeYearSymbols(enabled: boolean = true) {
-  return useQuery({
-    queryKey: historicalKeys.highVolumeYear(),
-    queryFn: async () => {
-      const response = await historicalService.getHighVolumeYearSymbols();
-      if (!response.success) {
-        throw new Error(response.message || "Failed to fetch high volume year symbols");
-      }
-      return response.data;
-    },
-    enabled,
-    ...CACHE_CONFIG.SCREENING,
-    placeholderData: (previousData) => previousData,
-    structuralSharing: true,
-  });
-}
-
-export function useHighVolumeEverSymbols(enabled: boolean = true) {
-  return useQuery({
-    queryKey: historicalKeys.highVolumeEver(),
-    queryFn: async () => {
-      const response = await historicalService.getHighVolumeEverSymbols();
-      if (!response.success) {
-        throw new Error(response.message || "Failed to fetch high volume ever symbols");
+        throw new Error(response.message || "Failed to fetch screener results");
       }
       return response.data;
     },

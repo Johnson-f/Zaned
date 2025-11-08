@@ -7,6 +7,7 @@ import { API_ENDPOINTS } from "../config/api";
 import type {
   MarketStatisticsResponse,
   CurrentMarketStatsResponse,
+  LiveMarketStatsResponse,
 } from "../types/market-statistics";
 
 /**
@@ -38,5 +39,13 @@ export async function getMarketStatistics(
  */
 export async function getCurrentMarketStatistics(): Promise<CurrentMarketStatsResponse> {
   return fetchApi<CurrentMarketStatsResponse>(API_ENDPOINTS.MARKET_STATISTICS.CURRENT);
+}
+
+/**
+ * Get live market statistics for frontend polling
+ * Returns advances, decliners, unchanged, total, and last_updated timestamp
+ */
+export async function getLiveMarketStatistics(): Promise<LiveMarketStatsResponse> {
+  return fetchApi<LiveMarketStatsResponse>(API_ENDPOINTS.MARKET_STATISTICS.LIVE);
 }
 

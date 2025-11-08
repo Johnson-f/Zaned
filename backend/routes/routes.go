@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"screener/backend/model"
+	"screener/backend/routes/filtering"
 	"screener/backend/service"
 	"screener/backend/supabase"
 	"strconv"
@@ -25,6 +26,11 @@ func SetupRoutes(app *fiber.App) {
 	// Public routes
 	public := app.Group("/api")
 	{
+		// Register filtering routes (inside-day, high-volume-quarter, high-volume-year, high-volume-ever)
+		filtering.SetupInsideDayRoutes(public)
+		filtering.SetupHighVolumeQuarterRoutes(public)
+		filtering.SetupHighVolumeYearRoutes(public)
+		filtering.SetupHighVolumeEverRoutes(public)
 		// Health check endpoint
 		public.Get("/health", func(c *fiber.Ctx) error {
 			return c.JSON(fiber.Map{
@@ -226,9 +232,12 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
-		// Inside day screener (public) - DAILY bars only (interval=1d)
-		public.Get("/inside-day", func(c *fiber.Ctx) error {
-			symbols, err := historicalService.GetSymbolsWithDailyInsideDay()
+		// Market statistics for frontend polling endpoint (public): returns advances, decliners, unchanged
+		// Frontend should poll this endpoint every 5 minutes to get real-time market statistics
+		public.Get("/market-statistics/live", func(c *fiber.Ctx) error {
+			statsService := service.NewMarketStatisticsService()
+
+			stats, err := statsService.GetMarketStatsForFrontend()
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -239,16 +248,25 @@ func SetupRoutes(app *fiber.App) {
 
 			return c.JSON(fiber.Map{
 				"success": true,
-				"data": fiber.Map{
-					"symbols": symbols,
-					"count":   len(symbols),
-				},
+				"data":    stats,
 			})
 		})
 
-		// Highest volume in last 90 days (public) - DAILY bars only
-		public.Get("/high-volume-quarter", func(c *fiber.Ctx) error {
-			symbols, err := historicalService.GetSymbolsWithHighestVolumeInQuarter()
+		// Get screener results with time period filtering (public)
+		public.Get("/screener-results", func(c *fiber.Ctx) error {
+			resultType := c.Query("type")      // "inside_day", "high_volume_quarter", "high_volume_year", "high_volume_ever"
+			period := c.Query("period", "all") // "7d", "30d", "90d", "ytd", "all"
+
+			if resultType == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"success": false,
+					"error":   "Bad Request",
+					"message": "type query parameter is required",
+				})
+			}
+
+			historicalService := service.NewHistoricalService()
+			symbols, err := historicalService.GetScreenerResults(resultType, period)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -262,46 +280,8 @@ func SetupRoutes(app *fiber.App) {
 				"data": fiber.Map{
 					"symbols": symbols,
 					"count":   len(symbols),
-				},
-			})
-		})
-
-		// Highest volume in last 365 days (public) - DAILY bars only
-		public.Get("/high-volume-year", func(c *fiber.Ctx) error {
-			symbols, err := historicalService.GetSymbolsWithHighestVolumeInYear()
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data": fiber.Map{
-					"symbols": symbols,
-					"count":   len(symbols),
-				},
-			})
-		})
-
-		// Highest volume ever (public) - DAILY bars only
-		public.Get("/high-volume-ever", func(c *fiber.Ctx) error {
-			symbols, err := historicalService.GetSymbolsWithHighestVolumeEver()
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"success": false,
-					"error":   "Internal Server Error",
-					"message": err.Error(),
-				})
-			}
-
-			return c.JSON(fiber.Map{
-				"success": true,
-				"data": fiber.Map{
-					"symbols": symbols,
-					"count":   len(symbols),
+					"type":    resultType,
+					"period":  period,
 				},
 			})
 		})

@@ -15,12 +15,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// MarketStatisticsService contains business logic for market statistics aggregation
-type MarketStatisticsService struct {
-	db         *gorm.DB
-	aggregator *DailyAggregator
-}
-
 // DailyAggregator holds in-memory aggregation state for the current day
 type DailyAggregator struct {
 	mu          sync.RWMutex
@@ -29,14 +23,35 @@ type DailyAggregator struct {
 	lastUpdated time.Time
 }
 
-// NewMarketStatisticsService constructs a new MarketStatisticsService
-func NewMarketStatisticsService() *MarketStatisticsService {
-	return &MarketStatisticsService{
-		db: database.GetDB(),
-		aggregator: &DailyAggregator{
+// globalAggregator is a shared singleton instance for all service instances
+var (
+	globalAggregator *DailyAggregator
+	aggregatorOnce   sync.Once
+)
+
+// getGlobalAggregator returns the shared DailyAggregator instance (singleton)
+func getGlobalAggregator() *DailyAggregator {
+	aggregatorOnce.Do(func() {
+		globalAggregator = &DailyAggregator{
 			today:  time.Now().Truncate(24 * time.Hour),
 			counts: make(map[string]int),
-		},
+		}
+	})
+	return globalAggregator
+}
+
+// MarketStatisticsService contains business logic for market statistics aggregation
+type MarketStatisticsService struct {
+	db         *gorm.DB
+	aggregator *DailyAggregator
+}
+
+// NewMarketStatisticsService constructs a new MarketStatisticsService
+// All instances share the same global aggregator for in-memory state
+func NewMarketStatisticsService() *MarketStatisticsService {
+	return &MarketStatisticsService{
+		db:         database.GetDB(),
+		aggregator: getGlobalAggregator(),
 	}
 }
 
@@ -105,6 +120,28 @@ func (s *MarketStatisticsService) GetCurrentDayStats() (map[string]int, error) {
 	stats["down"] = s.aggregator.counts["down"]
 	stats["unchanged"] = s.aggregator.counts["unchanged"]
 	stats["total"] = stats["up"] + stats["down"] + stats["unchanged"]
+
+	return stats, nil
+}
+
+// GetMarketStatsForFrontend returns market statistics formatted for frontend polling
+// Returns advances, decliners, unchanged, total, and last_updated timestamp
+func (s *MarketStatisticsService) GetMarketStatsForFrontend() (map[string]interface{}, error) {
+	s.aggregator.mu.RLock()
+	defer s.aggregator.mu.RUnlock()
+
+	advances := s.aggregator.counts["up"]
+	decliners := s.aggregator.counts["down"]
+	unchanged := s.aggregator.counts["unchanged"]
+	total := advances + decliners + unchanged
+
+	stats := map[string]interface{}{
+		"advances":     advances,
+		"decliners":    decliners,
+		"unchanged":    unchanged,
+		"total":        total,
+		"last_updated": s.aggregator.lastUpdated.Format(time.RFC3339),
+	}
 
 	return stats, nil
 }
