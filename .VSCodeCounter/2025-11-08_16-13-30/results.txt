@@ -1,0 +1,82 @@
+Date : 2025-11-08 16:13:30
+Directory : /Users/johnsonnifemi/Zaned/backend
+Total : 41 files,  5893 codes, 645 comments, 1035 blanks, all 7573 lines
+
+Languages
++------------------+------------+------------+------------+------------+------------+
+| language         | files      | code       | comment    | blank      | total      |
++------------------+------------+------------+------------+------------+------------+
+| Go               |         39 |      5,786 |        645 |      1,031 |      7,462 |
+| Go Checksum File |          1 |         72 |          0 |          1 |         73 |
+| Go Module File   |          1 |         35 |          0 |          3 |         38 |
++------------------+------------+------------+------------+------------+------------+
+
+Directories
++-----------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                    | files      | code       | comment    | blank      | total      |
++-----------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                       |         41 |      5,893 |        645 |      1,035 |      7,573 |
+| . (Files)                                                                               |          3 |        154 |          9 |         16 |        179 |
+| database                                                                                |          1 |        453 |        148 |        117 |        718 |
+| model                                                                                   |          7 |        227 |         23 |         45 |        295 |
+| routes                                                                                  |          6 |      2,065 |         99 |        266 |      2,430 |
+| routes (Files)                                                                          |          1 |      1,900 |         87 |        238 |      2,225 |
+| routes/filtering                                                                        |          5 |        165 |         12 |         28 |        205 |
+| service                                                                                 |         21 |      2,905 |        352 |        561 |      3,818 |
+| service (Files)                                                                         |          7 |      2,095 |        250 |        412 |      2,757 |
+| service/filtering                                                                       |         14 |        810 |        102 |        149 |      1,061 |
+| service/filtering (Files)                                                               |          5 |        317 |         41 |         62 |        420 |
+| service/filtering/indicators                                                            |          9 |        493 |         61 |         87 |        641 |
+| service/filtering/indicators (Files)                                                    |          2 |         21 |          2 |          4 |         27 |
+| service/filtering/indicators/calculations                                               |          3 |        146 |         19 |         23 |        188 |
+| service/filtering/indicators/screening                                                  |          4 |        326 |         40 |         60 |        426 |
+| supabase                                                                                |          3 |         89 |         14 |         30 |        133 |
++-----------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-----------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+
+| filename                                                                                | language         | code       | comment    | blank      | total      |
++-----------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+
+| /Users/johnsonnifemi/Zaned/backend/database/database.go                                 | Go               |        453 |        148 |        117 |        718 |
+| /Users/johnsonnifemi/Zaned/backend/go.mod                                               | Go Module File   |         35 |          0 |          3 |         38 |
+| /Users/johnsonnifemi/Zaned/backend/go.sum                                               | Go Checksum File |         72 |          0 |          1 |         73 |
+| /Users/johnsonnifemi/Zaned/backend/main.go                                              | Go               |         47 |          9 |         12 |         68 |
+| /Users/johnsonnifemi/Zaned/backend/model/company-info.go                                | Go               |         45 |          2 |          5 |         52 |
+| /Users/johnsonnifemi/Zaned/backend/model/fundamental-data.go                            | Go               |         25 |          3 |          6 |         34 |
+| /Users/johnsonnifemi/Zaned/backend/model/historical.go                                  | Go               |         31 |          3 |          6 |         40 |
+| /Users/johnsonnifemi/Zaned/backend/model/market-statistics.go                           | Go               |         26 |          3 |          7 |         36 |
+| /Users/johnsonnifemi/Zaned/backend/model/screener-result.go                             | Go               |         24 |          3 |          6 |         33 |
+| /Users/johnsonnifemi/Zaned/backend/model/screener.go                                    | Go               |         28 |          3 |          6 |         37 |
+| /Users/johnsonnifemi/Zaned/backend/model/watchlist.go                                   | Go               |         48 |          6 |          9 |         63 |
+| /Users/johnsonnifemi/Zaned/backend/routes/filtering/high-volume-ever.go                 | Go               |         41 |          3 |          7 |         51 |
+| /Users/johnsonnifemi/Zaned/backend/routes/filtering/high-volume-quarter.go              | Go               |         41 |          3 |          7 |         51 |
+| /Users/johnsonnifemi/Zaned/backend/routes/filtering/high-volume-year.go                 | Go               |         41 |          3 |          7 |         51 |
+| /Users/johnsonnifemi/Zaned/backend/routes/filtering/inside-day.go                       | Go               |         41 |          3 |          6 |         50 |
+| /Users/johnsonnifemi/Zaned/backend/routes/filtering/mod.go                              | Go               |          1 |          0 |          1 |          2 |
+| /Users/johnsonnifemi/Zaned/backend/routes/routes.go                                     | Go               |      1,900 |         87 |        238 |      2,225 |
+| /Users/johnsonnifemi/Zaned/backend/service/company-info.go                              | Go               |         86 |          8 |         22 |        116 |
+| /Users/johnsonnifemi/Zaned/backend/service/fetcher.go                                   | Go               |        755 |        103 |        137 |        995 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/high-volume-ever.go                | Go               |         78 |          8 |         15 |        101 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/high-volume-quarter.go             | Go               |         82 |         10 |         15 |        107 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/high-volume-year.go                | Go               |         82 |         10 |         15 |        107 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/indicators/calculations/compute.go | Go               |         93 |         13 |         16 |        122 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/indicators/calculations/helpers.go | Go               |         52 |          6 |          6 |         64 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/indicators/calculations/mod.go     | Go               |          1 |          0 |          1 |          2 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/indicators/mod.go                  | Go               |          1 |          0 |          1 |          2 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/indicators/screening/adr.go        | Go               |         90 |         12 |         16 |        118 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/indicators/screening/atr.go        | Go               |         82 |         14 |         16 |        112 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/indicators/screening/mod.go        | Go               |          1 |          0 |          1 |          2 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/indicators/screening/volume.go     | Go               |        153 |         14 |         27 |        194 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/indicators/types.go                | Go               |         20 |          2 |          3 |         25 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/inside-day.go                      | Go               |         74 |         13 |         16 |        103 |
+| /Users/johnsonnifemi/Zaned/backend/service/filtering/mod.go                             | Go               |          1 |          0 |          1 |          2 |
+| /Users/johnsonnifemi/Zaned/backend/service/fundamental-data.go                          | Go               |        452 |         49 |         95 |        596 |
+| /Users/johnsonnifemi/Zaned/backend/service/historical.go                                | Go               |        173 |         24 |         38 |        235 |
+| /Users/johnsonnifemi/Zaned/backend/service/market-statistics.go                         | Go               |        138 |         18 |         29 |        185 |
+| /Users/johnsonnifemi/Zaned/backend/service/screener.go                                  | Go               |        263 |         26 |         45 |        334 |
+| /Users/johnsonnifemi/Zaned/backend/service/watchlist.go                                 | Go               |        228 |         22 |         46 |        296 |
+| /Users/johnsonnifemi/Zaned/backend/supabase/client.go                                   | Go               |         20 |          1 |          9 |         30 |
+| /Users/johnsonnifemi/Zaned/backend/supabase/jwt.go                                      | Go               |         44 |          8 |         14 |         66 |
+| /Users/johnsonnifemi/Zaned/backend/supabase/middleware.go                               | Go               |         25 |          5 |          7 |         37 |
+| Total                                                                                   |                  |      5,893 |        645 |      1,035 |      7,573 |
++-----------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+

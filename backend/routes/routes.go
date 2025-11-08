@@ -6,6 +6,7 @@ import (
 	"screener/backend/model"
 	"screener/backend/routes/filtering"
 	"screener/backend/service"
+	indicatorsscreening "screener/backend/service/filtering/indicators/screening"
 	"screener/backend/supabase"
 	"strconv"
 	"time"
@@ -313,7 +314,8 @@ func SetupRoutes(app *fiber.App) {
 				}
 			}
 
-			symbols, err := historicalService.GetSymbolsByADR(rangeParam, interval, lookback, minADR, maxADR)
+			adrService := indicatorsscreening.NewADRScreeningService()
+			symbols, err := adrService.GetSymbolsByADR(rangeParam, interval, lookback, minADR, maxADR)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -365,7 +367,8 @@ func SetupRoutes(app *fiber.App) {
 				}
 			}
 
-			symbols, err := historicalService.GetSymbolsByATR(rangeParam, interval, lookback, minATR, maxATR)
+			atrService := indicatorsscreening.NewATRScreeningService()
+			symbols, err := atrService.GetSymbolsByATR(rangeParam, interval, lookback, minATR, maxATR)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -414,7 +417,8 @@ func SetupRoutes(app *fiber.App) {
 				})
 			}
 
-			adrPercent, err := historicalService.GetADRForSymbol(symbol, rangeParam, interval, lookback)
+			adrService := indicatorsscreening.NewADRScreeningService()
+			adrPercent, err := adrService.GetADRForSymbol(symbol, rangeParam, interval, lookback)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -461,7 +465,8 @@ func SetupRoutes(app *fiber.App) {
 				})
 			}
 
-			atrPercent, err := historicalService.GetATRForSymbol(symbol, rangeParam, interval, lookback)
+			atrService := indicatorsscreening.NewATRScreeningService()
+			atrPercent, err := atrService.GetATRForSymbol(symbol, rangeParam, interval, lookback)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -511,7 +516,8 @@ func SetupRoutes(app *fiber.App) {
 				}
 			}
 
-			symbols, err := historicalService.GetSymbolsByAvgVolumeDollars(rangeParam, interval, lookback, minVolDollarsM, maxVolDollarsM)
+			volumeService := indicatorsscreening.NewVolumeScreeningService()
+			symbols, err := volumeService.GetSymbolsByAvgVolumeDollars(rangeParam, interval, lookback, minVolDollarsM, maxVolDollarsM)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -563,7 +569,8 @@ func SetupRoutes(app *fiber.App) {
 				}
 			}
 
-			symbols, err := historicalService.GetSymbolsByAvgVolumePercent(rangeParam, interval, lookback, minVolPercent, maxVolPercent)
+			volumeService := indicatorsscreening.NewVolumeScreeningService()
+			symbols, err := volumeService.GetSymbolsByAvgVolumePercent(rangeParam, interval, lookback, minVolPercent, maxVolPercent)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -612,7 +619,8 @@ func SetupRoutes(app *fiber.App) {
 				})
 			}
 
-			avgVolDollarsM, err := historicalService.GetAvgVolumeDollarsForSymbol(symbol, rangeParam, interval, lookback)
+			volumeService := indicatorsscreening.NewVolumeScreeningService()
+			avgVolDollarsM, err := volumeService.GetAvgVolumeDollarsForSymbol(symbol, rangeParam, interval, lookback)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
@@ -659,7 +667,8 @@ func SetupRoutes(app *fiber.App) {
 				})
 			}
 
-			volPercent, err := historicalService.GetAvgVolumePercentForSymbol(symbol, rangeParam, interval, lookback)
+			volumeService := indicatorsscreening.NewVolumeScreeningService()
+			volPercent, err := volumeService.GetAvgVolumePercentForSymbol(symbol, rangeParam, interval, lookback)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
