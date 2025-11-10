@@ -27,9 +27,9 @@ fi
 
 # Check DNS configuration
 echo -e "${YELLOW}Checking DNS configuration...${NC}"
-if ! host api.zaned.site > /dev/null 2>&1; then
-    echo -e "${YELLOW}Warning: DNS for api.zaned.site not configured or not propagated yet${NC}"
-    echo "Make sure to point api.zaned.site to this server's IP address"
+if ! host api.zaned.space > /dev/null 2>&1; then
+    echo -e "${YELLOW}Warning: DNS for api.zaned.space not configured or not propagated yet${NC}"
+    echo "Make sure to point api.zaned.space to this server's IP address"
     read -p "Continue anyway? (y/n) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -70,8 +70,8 @@ echo ""
 echo "Services running:"
 docker-compose -f docker-compose.prod.yml ps
 echo ""
-echo "API URL: https://api.zaned.site"
-echo "Health check: https://api.zaned.site/api/health"
+echo "API URL: https://api.zaned.space"
+echo "Health check: https://api.zaned.space/api/health"
 echo ""
 echo "View logs: docker-compose -f docker-compose.prod.yml logs -f"
 echo "Stop services: docker-compose -f docker-compose.prod.yml down"

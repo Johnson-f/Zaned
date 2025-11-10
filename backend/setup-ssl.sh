@@ -5,12 +5,12 @@
 
 set -e
 
-echo "=== SSL Certificate Setup for api.zaned.site ==="
+echo "=== SSL Certificate Setup for api.zaned.space ==="
 echo ""
 
 # Check if domain is provided
-DOMAIN=${1:-api.zaned.site}
-EMAIL=${2:-admin@zaned.site}
+DOMAIN=${1:-api.zaned.space}
+EMAIL=${2:-admin@zaned.space}
 
 echo "Domain: $DOMAIN"
 echo "Email: $EMAIL"

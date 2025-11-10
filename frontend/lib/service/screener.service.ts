@@ -3,7 +3,7 @@
  * Handles all API calls to the backend screener endpoints
  */
 
-import { API_ENDPOINTS, createAuthHeaders } from "../config/api";
+import { getFullUrl, apiConfig, createAuthHeaders } from "../config/api";
 import type {
   ApiResponse,
   FilterOptions,
@@ -55,7 +55,7 @@ async function fetchApi<T>(
  * Get all screeners
  */
 export async function getAllScreeners(): Promise<ApiResponse<Screener[]>> {
-  return fetchApi<Screener[]>(API_ENDPOINTS.SCREENER.BASE);
+  return fetchApi<Screener[]>(getFullUrl(apiConfig.endpoints.screener.base));
 }
 
 /**
@@ -64,7 +64,7 @@ export async function getAllScreeners(): Promise<ApiResponse<Screener[]>> {
 export async function getScreenerById(
   id: string
 ): Promise<ApiResponse<Screener>> {
-  return fetchApi<Screener>(API_ENDPOINTS.SCREENER.BY_ID(id));
+  return fetchApi<Screener>(getFullUrl(apiConfig.endpoints.screener.byId(id)));
 }
 
 /**
@@ -73,7 +73,7 @@ export async function getScreenerById(
 export async function getScreenerBySymbol(
   symbol: string
 ): Promise<ApiResponse<Screener>> {
-  return fetchApi<Screener>(API_ENDPOINTS.SCREENER.BY_SYMBOL(symbol));
+  return fetchApi<Screener>(getFullUrl(apiConfig.endpoints.screener.bySymbol(symbol)));
 }
 
 /**
@@ -82,7 +82,7 @@ export async function getScreenerBySymbol(
 export async function getScreenersBySymbols(
   symbols: string[]
 ): Promise<ApiResponse<Screener[]>> {
-  return fetchApi<Screener[]>(API_ENDPOINTS.SCREENER.SYMBOLS, {
+  return fetchApi<Screener[]>(getFullUrl(apiConfig.endpoints.screener.symbols), {
     method: "POST",
     body: JSON.stringify({ symbols }),
   });
@@ -138,7 +138,7 @@ export async function getScreenersWithFilters(
     params.append("limit", pagination.limit.toString());
   }
 
-  const url = `${API_ENDPOINTS.SCREENER.FILTER}?${params.toString()}`;
+  const url = `${getFullUrl(apiConfig.endpoints.screener.filter)}?${params.toString()}`;
   return fetchApi<QueryResult>(url);
 }
 
@@ -153,7 +153,7 @@ export async function searchScreenersBySymbol(
   params.append("q", searchTerm);
   params.append("limit", limit.toString());
 
-  const url = `${API_ENDPOINTS.SCREENER.SEARCH}?${params.toString()}`;
+  const url = `${getFullUrl(apiConfig.endpoints.screener.search)}?${params.toString()}`;
   return fetchApi<Screener[]>(url);
 }
 
@@ -168,7 +168,7 @@ export async function getScreenersByPriceRange(
   params.append("min", minPrice.toString());
   params.append("max", maxPrice.toString());
 
-  const url = `${API_ENDPOINTS.SCREENER.PRICE_RANGE}?${params.toString()}`;
+  const url = `${getFullUrl(apiConfig.endpoints.screener.priceRange)}?${params.toString()}`;
   return fetchApi<Screener[]>(url);
 }
 
@@ -183,7 +183,7 @@ export async function getScreenersByVolumeRange(
   params.append("min", minVolume.toString());
   params.append("max", maxVolume.toString());
 
-  const url = `${API_ENDPOINTS.SCREENER.VOLUME_RANGE}?${params.toString()}`;
+  const url = `${getFullUrl(apiConfig.endpoints.screener.volumeRange)}?${params.toString()}`;
   return fetchApi<Screener[]>(url);
 }
 
@@ -196,7 +196,7 @@ export async function getTopGainers(
   const params = new URLSearchParams();
   params.append("limit", limit.toString());
 
-  const url = `${API_ENDPOINTS.SCREENER.TOP_GAINERS}?${params.toString()}`;
+  const url = `${getFullUrl(apiConfig.endpoints.screener.topGainers)}?${params.toString()}`;
   return fetchApi<Screener[]>(url);
 }
 
@@ -209,7 +209,7 @@ export async function getMostActive(
   const params = new URLSearchParams();
   params.append("limit", limit.toString());
 
-  const url = `${API_ENDPOINTS.SCREENER.MOST_ACTIVE}?${params.toString()}`;
+  const url = `${getFullUrl(apiConfig.endpoints.screener.mostActive)}?${params.toString()}`;
   return fetchApi<Screener[]>(url);
 }
 
@@ -217,6 +217,6 @@ export async function getMostActive(
  * Get total count of screeners
  */
 export async function getScreenerCount(): Promise<ApiResponse<{ count: number }>> {
-  return fetchApi<{ count: number }>(API_ENDPOINTS.SCREENER.COUNT);
+  return fetchApi<{ count: number }>(getFullUrl(apiConfig.endpoints.screener.count));
 }
 

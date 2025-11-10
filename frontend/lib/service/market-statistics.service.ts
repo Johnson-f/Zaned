@@ -3,7 +3,7 @@
  * Handles all API calls to the backend market statistics endpoints
  */
 
-import { API_ENDPOINTS } from "../config/api";
+import { getFullUrl, apiConfig } from "../config/api";
 import type {
   MarketStatisticsResponse,
   CurrentMarketStatsResponse,
@@ -30,7 +30,11 @@ export async function getMarketStatistics(
   startDate?: string,
   endDate?: string
 ): Promise<MarketStatisticsResponse> {
-  const url = API_ENDPOINTS.MARKET_STATISTICS.BASE(startDate, endDate);
+  const params = new URLSearchParams();
+  if (startDate) params.append("startDate", startDate);
+  if (endDate) params.append("endDate", endDate);
+  const query = params.toString();
+  const url = getFullUrl(`${apiConfig.endpoints.marketStatistics.base}${query ? `?${query}` : ""}`);
   return fetchApi<MarketStatisticsResponse>(url);
 }
 
@@ -38,7 +42,7 @@ export async function getMarketStatistics(
  * Get current day's real-time market statistics
  */
 export async function getCurrentMarketStatistics(): Promise<CurrentMarketStatsResponse> {
-  return fetchApi<CurrentMarketStatsResponse>(API_ENDPOINTS.MARKET_STATISTICS.CURRENT);
+  return fetchApi<CurrentMarketStatsResponse>(getFullUrl(apiConfig.endpoints.marketStatistics.current));
 }
 
 /**
@@ -46,6 +50,6 @@ export async function getCurrentMarketStatistics(): Promise<CurrentMarketStatsRe
  * Returns advances, decliners, unchanged, total, and last_updated timestamp
  */
 export async function getLiveMarketStatistics(): Promise<LiveMarketStatsResponse> {
-  return fetchApi<LiveMarketStatsResponse>(API_ENDPOINTS.MARKET_STATISTICS.LIVE);
+  return fetchApi<LiveMarketStatsResponse>(getFullUrl(apiConfig.endpoints.marketStatistics.live));
 }
 

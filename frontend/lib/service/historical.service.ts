@@ -3,7 +3,7 @@
  * Handles all API calls to the backend historical endpoints
  */
 
-import { API_ENDPOINTS, createAuthHeaders } from "../config/api";
+import { getFullUrl, apiConfig, createAuthHeaders } from "../config/api";
 import type {
   ApiResponse,
   Historical,
@@ -56,7 +56,7 @@ async function fetchApi<T>(
  * Get all historical records
  */
 export async function getAllHistorical(): Promise<ApiResponse<Historical[]>> {
-  return fetchApi<Historical[]>(API_ENDPOINTS.HISTORICAL.BASE);
+  return fetchApi<Historical[]>(getFullUrl(apiConfig.endpoints.historical.base));
 }
 
 /**
@@ -65,7 +65,7 @@ export async function getAllHistorical(): Promise<ApiResponse<Historical[]>> {
 export async function getHistoricalById(
   id: string
 ): Promise<ApiResponse<Historical>> {
-  return fetchApi<Historical>(API_ENDPOINTS.HISTORICAL.BY_ID(id));
+  return fetchApi<Historical>(getFullUrl(apiConfig.endpoints.historical.byId(id)));
 }
 
 /**
@@ -76,8 +76,12 @@ export async function getHistoricalBySymbol(
   range: string,
   interval: string
 ): Promise<ApiResponse<Historical[]>> {
+  const params = new URLSearchParams();
+  params.append("symbol", symbol);
+  params.append("range", range);
+  params.append("interval", interval);
   return fetchApi<Historical[]>(
-    API_ENDPOINTS.HISTORICAL.BY_SYMBOL(symbol, range, interval)
+    getFullUrl(`${apiConfig.endpoints.historical.bySymbol}?${params.toString()}`)
   );
 }
 
@@ -88,7 +92,10 @@ export async function getScreenerResults(
   type: string,
   period?: string
 ): Promise<ApiResponse<{ symbols: string[]; count: number; type: string; period: string }>> {
-  const url = API_ENDPOINTS.SCREENER_RESULTS.BASE(type, period);
+  const params = new URLSearchParams();
+  params.append("type", type);
+  if (period) params.append("period", period);
+  const url = getFullUrl(`${apiConfig.endpoints.screenerResults.base}?${params.toString()}`);
   return fetchApi<{ symbols: string[]; count: number; type: string; period: string }>(url);
 }
 
@@ -99,13 +106,14 @@ export async function getAdrScreen(params: {
   minAdr?: number;
   maxAdr?: number;
 }): Promise<ApiResponse<SymbolsResponse>> {
-  const url = API_ENDPOINTS.SCREENING.ADR_SCREEN(
-    params.range,
-    params.interval,
-    params.lookback,
-    params.minAdr,
-    params.maxAdr
-  );
+  const queryParams = new URLSearchParams();
+  if (params.range) queryParams.append("range", params.range);
+  if (params.interval) queryParams.append("interval", params.interval);
+  if (params.lookback) queryParams.append("lookback", params.lookback.toString());
+  if (params.minAdr !== undefined) queryParams.append("min_adr", params.minAdr.toString());
+  if (params.maxAdr !== undefined) queryParams.append("max_adr", params.maxAdr.toString());
+  const query = queryParams.toString();
+  const url = getFullUrl(`${apiConfig.endpoints.screening.adrScreen}${query ? `?${query}` : ""}`);
   return fetchApi<SymbolsResponse>(url);
 }
 
@@ -116,13 +124,14 @@ export async function getAtrScreen(params: {
   minAtr?: number;
   maxAtr?: number;
 }): Promise<ApiResponse<SymbolsResponse>> {
-  const url = API_ENDPOINTS.SCREENING.ATR_SCREEN(
-    params.range,
-    params.interval,
-    params.lookback,
-    params.minAtr,
-    params.maxAtr
-  );
+  const queryParams = new URLSearchParams();
+  if (params.range) queryParams.append("range", params.range);
+  if (params.interval) queryParams.append("interval", params.interval);
+  if (params.lookback) queryParams.append("lookback", params.lookback.toString());
+  if (params.minAtr !== undefined) queryParams.append("min_atr", params.minAtr.toString());
+  if (params.maxAtr !== undefined) queryParams.append("max_atr", params.maxAtr.toString());
+  const query = queryParams.toString();
+  const url = getFullUrl(`${apiConfig.endpoints.screening.atrScreen}${query ? `?${query}` : ""}`);
   return fetchApi<SymbolsResponse>(url);
 }
 
@@ -132,12 +141,12 @@ export async function getAdrForSymbol(params: {
   interval?: string;
   lookback?: number;
 }): Promise<ApiResponse<AdrPercentResponse>> {
-  const url = API_ENDPOINTS.SCREENING.ADR(
-    params.symbol,
-    params.range,
-    params.interval,
-    params.lookback
-  );
+  const queryParams = new URLSearchParams();
+  queryParams.append("symbol", params.symbol);
+  if (params.range) queryParams.append("range", params.range);
+  if (params.interval) queryParams.append("interval", params.interval);
+  if (params.lookback) queryParams.append("lookback", params.lookback.toString());
+  const url = getFullUrl(`${apiConfig.endpoints.screening.adr}?${queryParams.toString()}`);
   return fetchApi<AdrPercentResponse>(url);
 }
 
@@ -147,12 +156,12 @@ export async function getAtrForSymbol(params: {
   interval?: string;
   lookback?: number;
 }): Promise<ApiResponse<AtrPercentResponse>> {
-  const url = API_ENDPOINTS.SCREENING.ATR(
-    params.symbol,
-    params.range,
-    params.interval,
-    params.lookback
-  );
+  const queryParams = new URLSearchParams();
+  queryParams.append("symbol", params.symbol);
+  if (params.range) queryParams.append("range", params.range);
+  if (params.interval) queryParams.append("interval", params.interval);
+  if (params.lookback) queryParams.append("lookback", params.lookback.toString());
+  const url = getFullUrl(`${apiConfig.endpoints.screening.atr}?${queryParams.toString()}`);
   return fetchApi<AtrPercentResponse>(url);
 }
 
@@ -163,13 +172,14 @@ export async function getAvgVolumeDollarsScreen(params: {
   minVolDollarsM?: number;
   maxVolDollarsM?: number;
 }): Promise<ApiResponse<SymbolsResponse>> {
-  const url = API_ENDPOINTS.SCREENING.AVG_VOLUME_DOLLARS_SCREEN(
-    params.range,
-    params.interval,
-    params.lookback,
-    params.minVolDollarsM,
-    params.maxVolDollarsM
-  );
+  const queryParams = new URLSearchParams();
+  if (params.range) queryParams.append("range", params.range);
+  if (params.interval) queryParams.append("interval", params.interval);
+  if (params.lookback) queryParams.append("lookback", params.lookback.toString());
+  if (params.minVolDollarsM !== undefined) queryParams.append("min_vol_dollars_m", params.minVolDollarsM.toString());
+  if (params.maxVolDollarsM !== undefined) queryParams.append("max_vol_dollars_m", params.maxVolDollarsM.toString());
+  const query = queryParams.toString();
+  const url = getFullUrl(`${apiConfig.endpoints.screening.avgVolumeDollarsScreen}${query ? `?${query}` : ""}`);
   return fetchApi<SymbolsResponse>(url);
 }
 
@@ -180,13 +190,14 @@ export async function getAvgVolumePercentScreen(params: {
   minVolPercent?: number;
   maxVolPercent?: number;
 }): Promise<ApiResponse<SymbolsResponse>> {
-  const url = API_ENDPOINTS.SCREENING.AVG_VOLUME_PERCENT_SCREEN(
-    params.range,
-    params.interval,
-    params.lookback,
-    params.minVolPercent,
-    params.maxVolPercent
-  );
+  const queryParams = new URLSearchParams();
+  if (params.range) queryParams.append("range", params.range);
+  if (params.interval) queryParams.append("interval", params.interval);
+  if (params.lookback) queryParams.append("lookback", params.lookback.toString());
+  if (params.minVolPercent !== undefined) queryParams.append("min_vol_percent", params.minVolPercent.toString());
+  if (params.maxVolPercent !== undefined) queryParams.append("max_vol_percent", params.maxVolPercent.toString());
+  const query = queryParams.toString();
+  const url = getFullUrl(`${apiConfig.endpoints.screening.avgVolumePercentScreen}${query ? `?${query}` : ""}`);
   return fetchApi<SymbolsResponse>(url);
 }
 
@@ -196,12 +207,12 @@ export async function getAvgVolumeDollarsForSymbol(params: {
   interval?: string;
   lookback?: number;
 }): Promise<ApiResponse<AvgVolumeDollarsResponse>> {
-  const url = API_ENDPOINTS.SCREENING.AVG_VOLUME_DOLLARS(
-    params.symbol,
-    params.range,
-    params.interval,
-    params.lookback
-  );
+  const queryParams = new URLSearchParams();
+  queryParams.append("symbol", params.symbol);
+  if (params.range) queryParams.append("range", params.range);
+  if (params.interval) queryParams.append("interval", params.interval);
+  if (params.lookback) queryParams.append("lookback", params.lookback.toString());
+  const url = getFullUrl(`${apiConfig.endpoints.screening.avgVolumeDollars}?${queryParams.toString()}`);
   return fetchApi<AvgVolumeDollarsResponse>(url);
 }
 
@@ -211,12 +222,12 @@ export async function getAvgVolumePercentForSymbol(params: {
   interval?: string;
   lookback?: number;
 }): Promise<ApiResponse<AvgVolumePercentResponse>> {
-  const url = API_ENDPOINTS.SCREENING.AVG_VOLUME_PERCENT(
-    params.symbol,
-    params.range,
-    params.interval,
-    params.lookback
-  );
+  const queryParams = new URLSearchParams();
+  queryParams.append("symbol", params.symbol);
+  if (params.range) queryParams.append("range", params.range);
+  if (params.interval) queryParams.append("interval", params.interval);
+  if (params.lookback) queryParams.append("lookback", params.lookback.toString());
+  const url = getFullUrl(`${apiConfig.endpoints.screening.avgVolumePercent}?${queryParams.toString()}`);
   return fetchApi<AvgVolumePercentResponse>(url);
 }
 
@@ -226,7 +237,7 @@ export async function getAvgVolumePercentForSymbol(params: {
 export async function createHistorical(
   historical: Historical
 ): Promise<ApiResponse<Historical>> {
-  return fetchApi<Historical>(API_ENDPOINTS.HISTORICAL.BASE, {
+  return fetchApi<Historical>(getFullUrl(apiConfig.endpoints.historical.base), {
     method: "POST",
     body: JSON.stringify(historical),
   });
@@ -239,7 +250,7 @@ export async function createHistoricalBatch(
   historical: Historical[]
 ): Promise<ApiResponse<{ message: string; count: number }>> {
   return fetchApi<{ message: string; count: number }>(
-    API_ENDPOINTS.HISTORICAL.BATCH,
+    getFullUrl(apiConfig.endpoints.historical.batch),
     {
       method: "POST",
       body: JSON.stringify(historical),
@@ -253,7 +264,7 @@ export async function createHistoricalBatch(
 export async function upsertHistorical(
   historical: Historical
 ): Promise<ApiResponse<Historical>> {
-  return fetchApi<Historical>(API_ENDPOINTS.HISTORICAL.BASE, {
+  return fetchApi<Historical>(getFullUrl(apiConfig.endpoints.historical.base), {
     method: "PUT",
     body: JSON.stringify(historical),
   });
@@ -266,7 +277,7 @@ export async function upsertHistoricalBatch(
   historical: Historical[]
 ): Promise<ApiResponse<{ message: string; count: number }>> {
   return fetchApi<{ message: string; count: number }>(
-    API_ENDPOINTS.HISTORICAL.BATCH,
+    getFullUrl(apiConfig.endpoints.historical.batch),
     {
       method: "PUT",
       body: JSON.stringify(historical),
@@ -282,7 +293,7 @@ export async function updateHistorical(
   historical: Partial<Historical>
 ): Promise<ApiResponse<{ message: string }>> {
   return fetchApi<{ message: string }>(
-    API_ENDPOINTS.HISTORICAL.BY_ID(id),
+    getFullUrl(apiConfig.endpoints.historical.byId(id)),
     {
       method: "PUT",
       body: JSON.stringify(historical),
@@ -297,7 +308,7 @@ export async function deleteHistorical(
   id: string
 ): Promise<ApiResponse<{ message: string }>> {
   return fetchApi<{ message: string }>(
-    API_ENDPOINTS.HISTORICAL.BY_ID(id),
+    getFullUrl(apiConfig.endpoints.historical.byId(id)),
     {
       method: "DELETE",
     }

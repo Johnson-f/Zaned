@@ -12,7 +12,7 @@ services:
       - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
       - DATABASE_URL=${DATABASE_URL}
       - PORT=8080
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://zaned.site}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://zaned.space}
     env_file:
       - .env
     restart: unless-stopped

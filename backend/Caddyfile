@@ -1,7 +1,7 @@
 # Caddy configuration for HTTPS with automatic SSL
 # Caddy automatically obtains and renews SSL certificates from Let's Encrypt
 
-api.zaned.site {
+api.zaned.space {
     # Reverse proxy to backend container
     reverse_proxy backend:8080
 

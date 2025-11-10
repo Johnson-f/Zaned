@@ -3,7 +3,7 @@
  * Handles all API calls to the backend watchlist endpoints
  */
 
-import { API_ENDPOINTS, createAuthHeaders } from "../config/api";
+import { getFullUrl, apiConfig, createAuthHeaders } from "../config/api";
 import type {
   ApiResponse,
   Watchlist,
@@ -52,7 +52,7 @@ async function fetchApi<T>(
  * Get all watchlists for the authenticated user
  */
 export async function getAllWatchlists(): Promise<ApiResponse<Watchlist[]>> {
-  return fetchApi<Watchlist[]>(API_ENDPOINTS.WATCHLIST.BASE);
+  return fetchApi<Watchlist[]>(getFullUrl(apiConfig.endpoints.watchlist.base));
 }
 
 /**
@@ -61,7 +61,7 @@ export async function getAllWatchlists(): Promise<ApiResponse<Watchlist[]>> {
 export async function getWatchlistById(
   id: string
 ): Promise<ApiResponse<Watchlist>> {
-  return fetchApi<Watchlist>(API_ENDPOINTS.WATCHLIST.BY_ID(id));
+  return fetchApi<Watchlist>(getFullUrl(apiConfig.endpoints.watchlist.byId(id)));
 }
 
 /**
@@ -70,7 +70,7 @@ export async function getWatchlistById(
 export async function createWatchlist(
   name: string
 ): Promise<ApiResponse<Watchlist>> {
-  return fetchApi<Watchlist>(API_ENDPOINTS.WATCHLIST.BASE, {
+  return fetchApi<Watchlist>(getFullUrl(apiConfig.endpoints.watchlist.base), {
     method: "POST",
     body: JSON.stringify({ name }),
   });
@@ -83,7 +83,7 @@ export async function updateWatchlist(
   id: string,
   name: string
 ): Promise<ApiResponse<Watchlist>> {
-  return fetchApi<Watchlist>(API_ENDPOINTS.WATCHLIST.BY_ID(id), {
+  return fetchApi<Watchlist>(getFullUrl(apiConfig.endpoints.watchlist.byId(id)), {
     method: "PUT",
     body: JSON.stringify({ name }),
   });
@@ -95,7 +95,7 @@ export async function updateWatchlist(
 export async function deleteWatchlist(
   id: string
 ): Promise<ApiResponse<void>> {
-  return fetchApi<void>(API_ENDPOINTS.WATCHLIST.BY_ID(id), {
+  return fetchApi<void>(getFullUrl(apiConfig.endpoints.watchlist.byId(id)), {
     method: "DELETE",
   });
 }
@@ -107,7 +107,7 @@ export async function getWatchlistItems(
   watchlistId: string
 ): Promise<ApiResponse<WatchlistItem[]>> {
   return fetchApi<WatchlistItem[]>(
-    API_ENDPOINTS.WATCHLIST.ITEMS(watchlistId)
+    getFullUrl(apiConfig.endpoints.watchlist.items(watchlistId))
   );
 }
 
@@ -127,7 +127,7 @@ export async function addItemToWatchlist(
   }
 ): Promise<ApiResponse<WatchlistItem>> {
   return fetchApi<WatchlistItem>(
-    API_ENDPOINTS.WATCHLIST.ADD_ITEM(watchlistId),
+    getFullUrl(apiConfig.endpoints.watchlist.addItem(watchlistId)),
     {
       method: "POST",
       body: JSON.stringify(item),
@@ -142,7 +142,7 @@ export async function updateWatchlistItem(
   id: string,
   updates: Partial<WatchlistItem>
 ): Promise<ApiResponse<WatchlistItem>> {
-  return fetchApi<WatchlistItem>(API_ENDPOINTS.WATCHLIST.UPDATE_ITEM(id), {
+  return fetchApi<WatchlistItem>(getFullUrl(apiConfig.endpoints.watchlist.updateItem(id)), {
     method: "PUT",
     body: JSON.stringify(updates),
   });
@@ -154,7 +154,7 @@ export async function updateWatchlistItem(
 export async function deleteWatchlistItem(
   id: string
 ): Promise<ApiResponse<void>> {
-  return fetchApi<void>(API_ENDPOINTS.WATCHLIST.DELETE_ITEM(id), {
+  return fetchApi<void>(getFullUrl(apiConfig.endpoints.watchlist.deleteItem(id)), {
     method: "DELETE",
   });
 }
@@ -165,7 +165,7 @@ export async function deleteWatchlistItem(
 export async function toggleStarOnItem(
   id: string
 ): Promise<ApiResponse<WatchlistItem>> {
-  return fetchApi<WatchlistItem>(API_ENDPOINTS.WATCHLIST.TOGGLE_STAR(id), {
+  return fetchApi<WatchlistItem>(getFullUrl(apiConfig.endpoints.watchlist.toggleStar(id)), {
     method: "POST",
   });
 }

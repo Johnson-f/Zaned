@@ -1,12 +1,12 @@
 # Quick Start: Deploy Backend with HTTPS
 
-Get your backend running at `https://api.zaned.site` in 5 minutes.
+Get your backend running at `https://api.zaned.space` in 5 minutes.
 
 ## Prerequisites
 
-- [x] Domain: `zaned.site` 
+- [x] Domain: `zaned.space` 
 - [ ] Server with Docker installed
-- [ ] DNS configured: `api.zaned.site` → Your server IP
+- [ ] DNS configured: `api.zaned.space` → Your server IP
 
 ## Step 1: Configure DNS
 
@@ -21,9 +21,9 @@ TTL: 3600
 
 Verify DNS propagation:
 ```bash
-dig api.zaned.site
+dig api.zaned.space
 # or
-nslookup api.zaned.site
+nslookup api.zaned.space
 ```
 
 ## Step 2: Configure Environment
@@ -44,7 +44,7 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_JWT_SECRET=your-jwt-secret
 DATABASE_URL=postgresql://postgres:password@host:5432/postgres
-ALLOWED_ORIGINS=https://zaned.site,https://www.zaned.site
+ALLOWED_ORIGINS=https://zaned.space,https://www.zaned.space
 ```
 
 ## Step 3: Deploy
@@ -57,13 +57,13 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
-That's it! Your API is now live at `https://api.zaned.site`
+That's it! Your API is now live at `https://api.zaned.space`
 
 ## Step 4: Test
 
 ```bash
 # Test health endpoint
-curl https://api.zaned.site/api/health
+curl https://api.zaned.space/api/health
 
 # Expected response:
 # {"status":"ok","message":"Server is running"}

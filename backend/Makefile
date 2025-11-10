@@ -65,7 +65,7 @@ prod-restart: ## Restart production services
 	docker-compose -f docker-compose.prod.yml restart
 
 ssl-setup: ## Setup SSL certificates (Nginx only)
-	./setup-ssl.sh api.zaned.site
+	./setup-ssl.sh api.zaned.space
 
 clean: ## Clean build artifacts
 	rm -f main

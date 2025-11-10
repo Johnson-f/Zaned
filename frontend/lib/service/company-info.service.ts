@@ -3,7 +3,7 @@
  * Handles all API calls to the backend company info endpoints
  */
 
-import { API_ENDPOINTS } from "../config/api";
+import { getFullUrl, apiConfig } from "../config/api";
 import type {
   ApiResponse,
   CompanyInfo,
@@ -50,7 +50,7 @@ async function fetchApi<T>(
  * Get all company info
  */
 export async function getAllCompanyInfo(): Promise<ApiResponse<CompanyInfo[]>> {
-  return fetchApi<CompanyInfo[]>(API_ENDPOINTS.COMPANY_INFO.BASE);
+  return fetchApi<CompanyInfo[]>(getFullUrl(apiConfig.endpoints.companyInfo.base));
 }
 
 /**
@@ -59,7 +59,7 @@ export async function getAllCompanyInfo(): Promise<ApiResponse<CompanyInfo[]>> {
 export async function getCompanyInfoBySymbol(
   symbol: string
 ): Promise<ApiResponse<CompanyInfo>> {
-  return fetchApi<CompanyInfo>(API_ENDPOINTS.COMPANY_INFO.BY_SYMBOL(symbol));
+  return fetchApi<CompanyInfo>(getFullUrl(apiConfig.endpoints.companyInfo.bySymbol(symbol)));
 }
 
 /**
@@ -68,7 +68,7 @@ export async function getCompanyInfoBySymbol(
 export async function getCompanyInfoBySymbols(
   symbols: string[]
 ): Promise<ApiResponse<CompanyInfo[]>> {
-  return fetchApi<CompanyInfo[]>(API_ENDPOINTS.COMPANY_INFO.BY_SYMBOLS, {
+  return fetchApi<CompanyInfo[]>(getFullUrl(apiConfig.endpoints.companyInfo.symbols), {
     method: "POST",
     body: JSON.stringify({ symbols }),
   });
@@ -80,7 +80,7 @@ export async function getCompanyInfoBySymbols(
 export async function searchCompanyInfo(
   query: string
 ): Promise<ApiResponse<CompanyInfo[]>> {
-  return fetchApi<CompanyInfo[]>(API_ENDPOINTS.COMPANY_INFO.SEARCH(query));
+  return fetchApi<CompanyInfo[]>(getFullUrl(`${apiConfig.endpoints.companyInfo.search}?q=${encodeURIComponent(query)}`));
 }
 
 /**
@@ -89,7 +89,7 @@ export async function searchCompanyInfo(
 export async function getCompanyInfoBySector(
   sector: string
 ): Promise<ApiResponse<CompanyInfo[]>> {
-  return fetchApi<CompanyInfo[]>(API_ENDPOINTS.COMPANY_INFO.BY_SECTOR(sector));
+  return fetchApi<CompanyInfo[]>(getFullUrl(apiConfig.endpoints.companyInfo.bySector(sector)));
 }
 
 /**
@@ -98,6 +98,6 @@ export async function getCompanyInfoBySector(
 export async function getCompanyInfoByIndustry(
   industry: string
 ): Promise<ApiResponse<CompanyInfo[]>> {
-  return fetchApi<CompanyInfo[]>(API_ENDPOINTS.COMPANY_INFO.BY_INDUSTRY(industry));
+  return fetchApi<CompanyInfo[]>(getFullUrl(apiConfig.endpoints.companyInfo.byIndustry(industry)));
 }
 

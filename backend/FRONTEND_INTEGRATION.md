@@ -1,6 +1,6 @@
 # Frontend Integration Guide
 
-This guide shows how to configure your frontend to connect to your HTTPS backend at `api.zaned.site`.
+This guide shows how to configure your frontend to connect to your HTTPS backend at `api.zaned.space`.
 
 ## Environment Configuration
 
@@ -10,7 +10,7 @@ Create `.env.production`:
 
 ```bash
 # .env.production
-NEXT_PUBLIC_API_URL=https://api.zaned.site
+NEXT_PUBLIC_API_URL=https://www.zaned.space
 ```
 
 Create `.env.development`:
@@ -62,10 +62,10 @@ const data = await api.get('/api/health');
 // nuxt.config.js
 export default {
   publicRuntimeConfig: {
-    apiURL: process.env.API_URL || 'https://api.zaned.site'
+    apiURL: process.env.API_URL || 'https://api.zaned.space'
   },
   privateRuntimeConfig: {
-    apiURL: process.env.API_URL || 'https://api.zaned.site'
+    apiURL: process.env.API_URL || 'https://api.zaned.space'
   }
 }
 
@@ -82,7 +82,7 @@ export default {
 
 ```javascript
 // .env.production
-VITE_API_URL=https://api.zaned.site
+VITE_API_URL=https://api.zaned.space
 
 // .env.development
 VITE_API_URL=http://localhost:8080
@@ -101,7 +101,7 @@ fetch(`${API_URL}/api/health`)
 // environment.prod.ts
 export const environment = {
   production: true,
-  apiUrl: 'https://api.zaned.site'
+  apiUrl: 'https://api.zaned.space'
 };
 
 // environment.ts
@@ -134,7 +134,7 @@ export class ApiService {
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://api.zaned.site',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://api.zaned.space',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -179,7 +179,7 @@ const getScreenerResults = async (type, period) => {
 
 ```javascript
 // api/fetch-wrapper.js
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.zaned.site';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.zaned.space';
 
 class ApiClient {
   constructor(baseURL) {
@@ -369,7 +369,7 @@ try {
 
 ```javascript
 // test-api.js
-const API_URL = 'https://api.zaned.site';
+const API_URL = 'https://api.zaned.space';
 
 async function testAPI() {
   console.log('Testing API connection...');
