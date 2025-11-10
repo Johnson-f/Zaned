@@ -3,8 +3,36 @@
  * Centralized configuration for backend API connection
  */
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const isProduction = process.env.NODE_ENV === "production";
+const DEFAULT_DEV_URL = "http://localhost:8080";
+const DEFAULT_PROD_URL = "https://api.zaned.site";
+
+/**
+ * Normalize the API base URL so that we always use localhost in development
+ * and HTTPS in production.
+ */
+const resolveApiBaseUrl = () => {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+
+  if (!envUrl) {
+    return isProduction ? DEFAULT_PROD_URL : DEFAULT_DEV_URL;
+  }
+
+  if (isProduction && envUrl.startsWith("http://")) {
+    return envUrl.replace("http://", "https://");
+  }
+
+  return envUrl;
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
+
+export const logApi = (...args: unknown[]) => {
+  if (!isProduction) {
+    // eslint-disable-next-line no-console
+    console.log("[API]", ...args);
+  }
+};
 
 export const API_ENDPOINTS = {
   // Public routes
