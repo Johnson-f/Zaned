@@ -9,8 +9,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
-  Watchlist,
-  WatchlistItem,
+  WatchlistItem
 } from "../lib/types/watchlist";
 import * as watchlistService from "../lib/service/watchlist.service";
 

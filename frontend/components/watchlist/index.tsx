@@ -1,12 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { List, Plus, Star } from "lucide-react"
+import { List } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { WatchlistSelect } from "@/components/watchlist/WatchlistSelect"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { AddStocksPopover } from "@/components/watchlist/AddStocksPopover"
+import { AddStocksPopover, type CompanyItem } from "@/components/watchlist/AddStocksPopover"
 import { StockActionMenu } from "@/components/watchlist/StockActionMenu"
 import {
   useWatchlists,
@@ -154,7 +154,13 @@ export function Watchlist() {
   )
 
   // Determine which stocks to display
-  const displayStocks = stockSearchTerm.length > 0 ? searchResults : allCompanyInfo
+  // Convert CompanyInfo[] to CompanyItem[] since CompanyInfo contains all CompanyItem fields
+  const displayStocks: CompanyItem[] = (stockSearchTerm.length > 0 ? searchResults : allCompanyInfo).map((item) => ({
+    symbol: item.symbol,
+    name: item.name,
+    price: item.price,
+    logo: item.logo,
+  }))
   const isLoadingStocks = stockSearchTerm.length > 0 ? searchingStocks : loadingAllCompanies
 
   // Set first watchlist as selected when watchlists load
@@ -188,7 +194,7 @@ export function Watchlist() {
   }
 
   // Handle adding a stock to the watchlist
-  const handleAddStock = async (company: { symbol: string; name: string; price?: string; logo?: string }) => {
+  const handleAddStock = async (company: CompanyItem) => {
     if (!selectedWatchlistId) return
 
     try {
@@ -421,8 +427,8 @@ export function Watchlist() {
               stockSearchTerm={stockSearchTerm}
               setStockSearchTerm={setStockSearchTerm}
               isLoadingStocks={isLoadingStocks}
-              displayStocks={displayStocks as any}
-              onAddStock={handleAddStock as any}
+              displayStocks={displayStocks}
+              onAddStock={handleAddStock}
               isAdding={addWatchlistItem.isPending}
               triggerLabel="Add stocks"
             />
@@ -493,8 +499,8 @@ export function Watchlist() {
                   stockSearchTerm={stockSearchTerm}
                   setStockSearchTerm={setStockSearchTerm}
                   isLoadingStocks={isLoadingStocks}
-                  displayStocks={displayStocks as any}
-                  onAddStock={handleAddStock as any}
+                  displayStocks={displayStocks}
+                  onAddStock={handleAddStock}
                   isAdding={addWatchlistItem.isPending}
                 />
               </div>

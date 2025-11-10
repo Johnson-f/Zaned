@@ -6,9 +6,6 @@
 import {
   useQuery,
 } from "@tanstack/react-query";
-import type {
-  CompanyInfo,
-} from "../lib/types/company-info";
 import * as companyInfoService from "../lib/service/company-info.service";
 
 /**

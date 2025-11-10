@@ -9,6 +9,7 @@ export function Charting() {
   const searchParams = useSearchParams()
   const symbol = searchParams.get("symbol") || ""
   const [range, setRange] = React.useState("1d")
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [interval, setInterval] = React.useState("1m")
 
   // Default ranges and intervals mapping

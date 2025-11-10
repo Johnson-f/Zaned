@@ -3,10 +3,12 @@ package main
 import (
 	"log"
 	"os"
+	"os/signal"
 	"screener/backend/database"
 	"screener/backend/model"
 	"screener/backend/routes"
 	"screener/backend/supabase"
+	"syscall"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -44,10 +46,18 @@ func main() {
 
 	// Middleware
 	app.Use(logger.New())
+	
+	// CORS configuration - use environment variable for allowed origins
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		allowedOrigins = "*" // Default for development
+	}
+	
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+		AllowOrigins:     allowedOrigins,
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
+		AllowCredentials: true,
 	}))
 
 	// Setup routes
@@ -59,9 +69,26 @@ func main() {
 		port = "8080"
 	}
 
-	// Start server
-	log.Printf("Server starting on port %s", port)
-	if err := app.Listen(":" + port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	// Channel to listen for interrupt signals
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// Start server in a goroutine
+	go func() {
+		log.Printf("Server starting on port %s", port)
+		if err := app.Listen(":" + port); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	<-quit
+	log.Println("Shutting down server gracefully...")
+
+	// Gracefully shutdown the server
+	if err := app.Shutdown(); err != nil {
+		log.Printf("Error during shutdown: %v", err)
 	}
+
+	log.Println("Server stopped")
 }
