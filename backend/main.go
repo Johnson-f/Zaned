@@ -46,18 +46,21 @@ func main() {
 
 	// Middleware
 	app.Use(logger.New())
-	
+
 	// CORS configuration - use environment variable for allowed origins
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	if allowedOrigins == "" {
 		allowedOrigins = "*" // Default for development
 	}
-	
+
+	// When using wildcard (*), credentials cannot be allowed (browser security restriction)
+	allowCredentials := allowedOrigins != "*"
+
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
-		AllowCredentials: true,
+		AllowCredentials: allowCredentials,
 	}))
 
 	// Setup routes
