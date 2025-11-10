@@ -24,6 +24,27 @@ func SetupRoutes(app *fiber.App) {
 	companyInfoService := service.NewCompanyInfoService()
 	fundamentalDataService := service.NewFundamentalDataService()
 
+	// Root route
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status":  "ok",
+			"message": "Screener Backend API",
+			"version": "1.0.0",
+			"endpoints": fiber.Map{
+				"health": "/api/health",
+				"docs":   "See API documentation",
+			},
+		})
+	})
+
+	// Convenience health check at root level (redirects to /api/health)
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status":  "ok",
+			"message": "Server is running",
+		})
+	})
+
 	// Public routes
 	public := app.Group("/api")
 	{
