@@ -5,7 +5,7 @@
 
 const isProduction = process.env.NODE_ENV === "production";
 const DEFAULT_DEV_URL = "http://localhost:8080";
-const DEFAULT_PROD_URL = "https://api.zaned.site";
+const DEFAULT_PROD_URL = "https://zaned-backennd.onrender.com";
 
 /**
  * Normalize the API base URL so that we always use localhost in development

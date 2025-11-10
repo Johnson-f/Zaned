@@ -8,6 +8,7 @@ import (
 	"screener/backend/model"
 	"screener/backend/routes"
 	"screener/backend/supabase"
+	"strings"
 	"syscall"
 
 	"github.com/gofiber/fiber/v2"
@@ -48,20 +49,46 @@ func main() {
 	app.Use(logger.New())
 
 	// CORS configuration - use environment variable for allowed origins
-	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
-	if allowedOrigins == "" {
-		allowedOrigins = "*" // Default for development
+	allowedOriginsEnv := os.Getenv("ALLOWED_ORIGINS")
+
+	// Default origins: allow localhost for development and zaned.space for production
+	var allowedOrigins string
+	if allowedOriginsEnv == "" {
+		// Default: allow localhost and zaned.space
+		allowedOrigins = "http://localhost:3000,http://localhost:2000,https://zaned.space,https://www.zaned.space"
+	} else {
+		allowedOrigins = allowedOriginsEnv
+	}
+
+	// Parse comma-separated origins
+	originsList := []string{}
+	if allowedOrigins != "*" {
+		// Split by comma and trim whitespace
+		origins := strings.Split(allowedOrigins, ",")
+		for _, origin := range origins {
+			trimmed := strings.TrimSpace(origin)
+			if trimmed != "" {
+				originsList = append(originsList, trimmed)
+			}
+		}
 	}
 
 	// When using wildcard (*), credentials cannot be allowed (browser security restriction)
 	allowCredentials := allowedOrigins != "*"
 
-	app.Use(cors.New(cors.Config{
-		AllowOrigins:     allowedOrigins,
+	corsConfig := cors.Config{
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
 		AllowCredentials: allowCredentials,
-	}))
+	}
+
+	if allowedOrigins == "*" {
+		corsConfig.AllowOrigins = "*"
+	} else {
+		corsConfig.AllowOrigins = strings.Join(originsList, ",")
+	}
+
+	app.Use(cors.New(corsConfig))
 
 	// Setup routes
 	routes.SetupRoutes(app)
