@@ -1,15 +1,19 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import {
   BadgeCheck,
   Bell,
   ChevronsUpDown,
   CreditCard,
+  Laptop,
   LogOut,
-  Sparkles,
+  Moon,
+  Sun,
 } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useTheme } from "next-themes"
+import { createClient } from "@/lib/supabase/client"
 
 import {
   Avatar,
@@ -22,6 +26,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -31,18 +37,27 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { createClient } from "@/lib/supabase/client"
 
-export function NavUser() {
+export function NavUser({
+  user: initialUser,
+}: {
+  user?: {
+    name: string
+    email: string
+    avatar: string
+  }
+}) {
   const { isMobile } = useSidebar()
   const router = useRouter()
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
   const [user, setUser] = React.useState<{
     name: string
     email: string
-    avatar: string | null
-  } | null>(null)
-  const [loading, setLoading] = React.useState(true)
+    avatar: string
+  } | null>(initialUser || null)
 
+  // Get user data from Supabase
   React.useEffect(() => {
     async function fetchUser() {
       const supabase = createClient()
@@ -50,90 +65,38 @@ export function NavUser() {
       
       if (authUser) {
         setUser({
-          name: authUser.user_metadata?.full_name || 
-                authUser.user_metadata?.name || 
-                authUser.email?.split("@")[0] || 
-                "User",
+          name: authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "User",
           email: authUser.email || "",
-          avatar: authUser.user_metadata?.avatar_url || 
-                  authUser.user_metadata?.picture || 
-                  null,
+          avatar: authUser.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(authUser.email || "User")}`,
         })
       }
-      setLoading(false)
     }
-
+    
     fetchUser()
-
-    // Listen for auth changes
-    const supabase = createClient()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (session?.user) {
-          setUser({
-            name: session.user.user_metadata?.full_name || 
-                  session.user.user_metadata?.name || 
-                  session.user.email?.split("@")[0] || 
-                  "User",
-            email: session.user.email || "",
-            avatar: session.user.user_metadata?.avatar_url || 
-                    session.user.user_metadata?.picture || 
-                    null,
-          })
-        } else {
-          setUser(null)
-        }
-        setLoading(false)
-      }
-    )
-
-    return () => {
-      subscription.unsubscribe()
-    }
+    setMounted(true)
   }, [])
 
   const handleLogout = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push("/auth/login")
-    router.refresh()
   }
 
-  if (loading) {
-    return (
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton size="lg" disabled>
-            <Avatar className="h-8 w-8 rounded-lg">
-              <AvatarFallback className="rounded-lg">...</AvatarFallback>
-            </Avatar>
-            <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">Loading...</span>
-              <span className="truncate text-xs">...</span>
-            </div>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-    )
+  // Get user initials for avatar fallback
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
   }
 
-  if (!user) {
+  if (!mounted || !user) {
     return null
   }
 
-  // Get initials from name or email
-  const getInitials = (name: string, email: string) => {
-    if (name && name !== "User") {
-      const parts = name.trim().split(" ")
-      if (parts.length >= 2) {
-        return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
-      }
-      return name.substring(0, 2).toUpperCase()
-    }
-    return email.substring(0, 2).toUpperCase()
-  }
-
-  const initials = getInitials(user.name, user.email)
+  const userInitials = getInitials(user.name)
 
   return (
     <SidebarMenu>
@@ -142,11 +105,11 @@ export function NavUser() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground md:h-8 md:p-0"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={user.avatar || undefined} alt={user.name} />
-                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                <AvatarImage src={user.avatar} alt={user.name} />
+                <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{user.name}</span>
@@ -156,16 +119,16 @@ export function NavUser() {
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-56 rounded-lg"
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
             side={isMobile ? "bottom" : "right"}
-            align="start"
+            align="end"
             sideOffset={4}
           >
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatar || undefined} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                  <AvatarImage src={user.avatar} alt={user.name} />
+                  <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{user.name}</span>
@@ -173,13 +136,6 @@ export function NavUser() {
                 </div>
               </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <Sparkles />
-                Upgrade to Pro
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem>
@@ -195,6 +151,25 @@ export function NavUser() {
                 Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Theme</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={theme}
+              onValueChange={(value) => setTheme(value)}
+            >
+              <DropdownMenuRadioItem value="light" className="flex gap-2">
+                <Sun className="size-4" />
+                <span>Light</span>
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="dark" className="flex gap-2">
+                <Moon className="size-4" />
+                <span>Dark</span>
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="system" className="flex gap-2">
+                <Laptop className="size-4" />
+                <span>System</span>
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut />
