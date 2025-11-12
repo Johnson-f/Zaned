@@ -1,23 +1,48 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+"use client"
 
-export default async function WatchlistPage() {
-  const supabase = await createClient();
+import { Suspense } from "react"
+import { useSearchParams } from "next/navigation"
+import { Star } from "lucide-react"
 
-  const { data, error } = await supabase.auth.getClaims();
-  if (error || !data?.claims) {
-    redirect("/auth/login");
+function WatchlistContent() {
+  const searchParams = useSearchParams()
+  const symbol = searchParams.get("symbol")
+
+  if (symbol) {
+    // TODO: Show symbol details when symbol is selected
+    return (
+      <div className="flex-1 w-full flex flex-col">
+        {/* Symbol details will go here */}
+      </div>
+    )
   }
 
   return (
-    <div className="flex-1 w-full flex flex-col gap-12">
-      <div className="flex flex-col gap-2 items-start">
-        <h2 className="font-bold text-2xl mb-4">Watchlist</h2>
-        <p className="text-muted-foreground mb-6">
-          Test component using TanStack Query hooks to fetch historical data from the backend.
-        </p>
+    <div className="flex-1 w-full flex flex-col items-center justify-center">
+      <div className="flex flex-col items-center gap-4 text-center max-w-md px-4">
+        <div className="rounded-full bg-muted p-6">
+          <Star className="size-12 text-muted-foreground" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold">No symbol selected</h3>
+          <p className="text-sm text-muted-foreground">
+            Select a symbol from your watchlist to view details and charts.
+          </p>
+        </div>
       </div>
     </div>
-  );
+  )
+}
+
+export default function WatchlistPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex-1 w-full flex flex-col items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading...</div>
+      </div>
+    }>
+      <WatchlistContent />
+    </Suspense>
+  )
 }
 

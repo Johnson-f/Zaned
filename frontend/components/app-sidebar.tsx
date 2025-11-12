@@ -2,10 +2,9 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { ArchiveX, Command, Home, Plus, Send, Star, Trash2 } from "lucide-react"
 import { NavUser } from "@/components/nav-user"
-import { Label } from "@/components/ui/label"
 import {
   Sidebar,
   SidebarContent,
@@ -13,13 +12,11 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
@@ -72,71 +69,21 @@ const data = {
       isActive: false,
     },
   ],
-  mails: [
-    {
-      name: "William Smith",
-      email: "williamsmith@example.com",
-      subject: "Meeting Tomorrow",
-      date: "09:34 AM",
-      teaser:
-        "Hi team, just a reminder about our meeting tomorrow at 10 AM....",
-    },
-    {
-      name: "Alice Smith",
-      email: "alicesmith@example.com",
-      subject: "Re: Project Update",
-      date: "Yesterday",
-      teaser:
-        "Thanks for the update. The progress looks great so far....",
-    },
-    {
-      name: "Bob Johnson",
-      email: "bobjohnson@example.com",
-      subject: "Weekend Plans",
-      date: "2 days ago",
-      teaser:
-        "Hey everyone! I'm thinking of organizing a team outing this weekend....",
-    },
-    {
-      name: "Emily Davis",
-      email: "emilydavis@example.com",
-      subject: "Re: Question about Budget",
-      date: "2 days ago",
-      teaser:
-        "I've reviewed the budget numbers you sent over....",
-    },
-    {
-      name: "Michael Wilson",
-      email: "michaelwilson@example.com",
-      subject: "Important Announcement",
-      date: "1 week ago",
-      teaser:
-        "Please join us for an all-hands meeting this Friday at 3 PM....",
-    },
-    {
-      name: "Sarah Brown",
-      email: "sarahbrown@example.com",
-      subject: "Re: Feedback on Proposal",
-      date: "1 week ago",
-      teaser:
-        "Thank you for sending over the proposal. I've reviewed it and have some thoughts....",
-    },
-    {
-      name: "David Lee",
-      email: "davidlee@example.com",
-      subject: "New Project Idea",
-      date: "1 week ago",
-      teaser:
-        "I've been brainstorming and came up with an interesting project concept....",
-    },
-  ],
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [activeItem, setActiveItem] = React.useState(data.navMain[0])
-  const [mails, setMails] = React.useState(data.mails)
   const { setOpen } = useSidebar()
   const pathname = usePathname()
+  const router = useRouter()
+  
+  // Sync activeItem with pathname
+  React.useEffect(() => {
+    const currentNavItem = data.navMain.find(item => item.url === pathname)
+    if (currentNavItem) {
+      setActiveItem(currentNavItem)
+    }
+  }, [pathname])
   
   // Watchlist state
   const [user, setUser] = React.useState<{ id: string } | null>(null)
@@ -270,7 +217,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   // Determine selected watchlist from URL query params or set default
   React.useEffect(() => {
-    if (pathname === "/app/watchlist" && typeof window !== "undefined") {
+    if ((pathname === "/app/watchlist" || pathname === "/app") && typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search)
       const watchlistParam = params.get("watchlist")
       if (watchlistParam) {
@@ -279,7 +226,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         // Set first built-in watchlist as default if available
         setSelectedWatchlistId(builtInWatchlists[0].id)
       } else if (watchlists.length > 0 && !selectedWatchlistId) {
-        // Set first user watchlist as selected if on watchlist page and no param
+        // Set first user watchlist as selected if on home/watchlist page and no param
         setSelectedWatchlistId(watchlists[0].id)
       }
     }
@@ -350,7 +297,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       onClick={() => {
                         if (item.url === "#") {
                         setActiveItem(item)
-                        setMails(data.mails)
                         setOpen(true)
                         }
                       }}
@@ -381,7 +327,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </Sidebar>
 
       {/* Second sidebar - Watchlist */}
-      {activeItem.title === "Watchlist" && user ? (
+      {(activeItem.title === "Watchlist" || activeItem.title === "Home") && user ? (
         <Sidebar collapsible="none" className="hidden flex-1 md:flex">
           <SidebarHeader className="gap-3.5 border-b p-4">
             <div className="flex w-full items-center justify-between">
@@ -531,6 +477,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       <div
                         key={item.id}
                         className="px-4 py-3 hover:bg-sidebar-accent/50 transition-colors cursor-pointer border-b last:border-b-0"
+                        onClick={() => {
+                          const symbol = item.symbol || item.name.split(" ")[0]
+                          router.push(`/app/watchlist?symbol=${encodeURIComponent(symbol)}&watchlist=${selectedWatchlistId}`)
+                        }}
                       >
                         <div className="flex items-start justify-between gap-2">
                           {/* Left side - Symbol and Name */}
@@ -566,46 +516,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </div>
           </SidebarContent>
         </Sidebar>
-      ) : (
-      <Sidebar collapsible="none" className="hidden flex-1 md:flex">
-        <SidebarHeader className="gap-3.5 border-b p-4">
-          <div className="flex w-full items-center justify-between">
-            <div className="text-base font-medium text-foreground">
-              {activeItem.title}
-            </div>
-            <Label className="flex items-center gap-2 text-sm">
-              <span>Unreads</span>
-              <Switch className="shadow-none" />
-            </Label>
-          </div>
-          <SidebarInput placeholder="Type to search..." />
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup className="px-0">
-            <SidebarGroupContent>
-              {mails.map((mail) => (
-                <a
-                  href="#"
-                  key={mail.email}
-                  className="flex flex-col items-start gap-2 whitespace-nowrap border-b p-4 text-sm leading-tight last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                >
-                  <div className="flex w-full items-center gap-2">
-                    <span className="font-medium">{mail.name}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {mail.date}
-                    </span>
-                  </div>
-                  <span className="font-medium">{mail.subject}</span>
-                  <span className="line-clamp-2 w-[260px] whitespace-normal text-xs text-muted-foreground">
-                    {mail.teaser}
-                  </span>
-                </a>
-              ))}
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-      </Sidebar>
-      )}
+      ) : null}
     </Sidebar>
   )
 }
