@@ -52,7 +52,7 @@ const data = {
     },
     {
       title: "Sent",
-      url: "#",
+      url: "/app/charting",
       icon: Send,
       isActive: false,
     },
@@ -82,6 +82,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const currentNavItem = data.navMain.find(item => item.url === pathname)
     if (currentNavItem) {
       setActiveItem(currentNavItem)
+    } else if (pathname === "/app/charting") {
+      // Handle charting page - map to "Sent" item
+      const sentItem = data.navMain.find(item => item.title === "Sent")
+      if (sentItem) {
+        setActiveItem(sentItem)
+      }
     }
   }, [pathname])
   
@@ -217,7 +223,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   // Determine selected watchlist from URL query params or set default
   React.useEffect(() => {
-    if ((pathname === "/app/watchlist" || pathname === "/app") && typeof window !== "undefined") {
+    if ((pathname === "/app/watchlist" || pathname === "/app" || pathname === "/app/charting") && typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search)
       const watchlistParam = params.get("watchlist")
       if (watchlistParam) {
@@ -226,7 +232,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         // Set first built-in watchlist as default if available
         setSelectedWatchlistId(builtInWatchlists[0].id)
       } else if (watchlists.length > 0 && !selectedWatchlistId) {
-        // Set first user watchlist as selected if on home/watchlist page and no param
+        // Set first user watchlist as selected if on home/watchlist/charting page and no param
         setSelectedWatchlistId(watchlists[0].id)
       }
     }
@@ -327,7 +333,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </Sidebar>
 
       {/* Second sidebar - Watchlist */}
-      {(activeItem.title === "Watchlist" || activeItem.title === "Home") && user ? (
+      {(activeItem.title === "Watchlist" || activeItem.title === "Home" || activeItem.title === "Sent") && user ? (
         <Sidebar collapsible="none" className="hidden flex-1 md:flex">
           <SidebarHeader className="gap-3.5 border-b p-4">
             <div className="flex w-full items-center justify-between">
@@ -479,7 +485,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         className="px-4 py-3 hover:bg-sidebar-accent/50 transition-colors cursor-pointer border-b last:border-b-0"
                         onClick={() => {
                           const symbol = item.symbol || item.name.split(" ")[0]
-                          router.push(`/app/watchlist?symbol=${encodeURIComponent(symbol)}&watchlist=${selectedWatchlistId}`)
+                          // Navigate to charting if on charting page, otherwise to watchlist
+                          if (pathname === "/app/charting") {
+                            router.push(`/app/charting?symbol=${encodeURIComponent(symbol)}&watchlist=${selectedWatchlistId}`)
+                          } else {
+                            router.push(`/app/watchlist?symbol=${encodeURIComponent(symbol)}&watchlist=${selectedWatchlistId}`)
+                          }
                         }}
                       >
                         <div className="flex items-start justify-between gap-2">

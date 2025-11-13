@@ -51,8 +51,8 @@ export function SymbolSearch() {
 
   // Handle selecting a stock
   const handleSelectStock = (symbol: string) => {
-    // Navigate to screener page with symbol query param or handle selection
-    router.push(`/app/screener?symbol=${symbol}`)
+    // Navigate to charting page with symbol query param
+    router.push(`/app/charting?symbol=${symbol}`)
     setOpen(false)
     setSearchTerm("")
     setSelectedIndex(0)
