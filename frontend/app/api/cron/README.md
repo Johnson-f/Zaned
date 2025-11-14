@@ -2,6 +2,8 @@
 
 This directory contains API routes that are triggered by Vercel's cron job service to call backend endpoints at scheduled intervals.
 
+**Note**: Due to Vercel Hobby plan limitations (only daily cron jobs allowed), some jobs have been moved to Supabase. Only daily cron jobs are configured in `vercel.json`.
+
 ## Setup Instructions
 
 ### 1. Environment Variables
@@ -15,20 +17,30 @@ Add the following environment variable to your Vercel project:
 
 The `vercel.json` file in the root directory contains all cron job schedules. Vercel will automatically detect and configure these cron jobs when you deploy.
 
-### 3. Cron Job Schedules
+### 3. Daily Cron Job Schedules (Vercel)
 
 | Job | Schedule | Description |
 |-----|----------|-------------|
 | **Company Info Ingestion** | `0 2 * * *` | Daily at 2:00 AM UTC |
-| **Historical Data Ingestion** | `0 */4 * * *` | Every 4 hours (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC) |
-| **Fundamental Data Ingestion** | `0 3 * * 0` | Weekly on Sundays at 3:00 AM UTC |
-| **Watchlist Price Update** | `*/15 * * * *` | Every 15 minutes |
-| **Market Statistics Aggregation** | `*/5 * * * *` | Every 5 minutes |
+| **Fundamental Data Ingestion** | `0 3 * * *` | Daily at 3:00 AM UTC |
 | **Market Statistics EOD** | `30 20 * * *` | Daily at 8:30 PM UTC (4:30 PM ET) |
 | **Save Inside Day** | `35 20 * * *` | Daily at 8:35 PM UTC (4:35 PM ET) |
 | **Save High Volume Quarter** | `40 20 * * *` | Daily at 8:40 PM UTC (4:40 PM ET) |
 | **Save High Volume Year** | `45 20 * * *` | Daily at 8:45 PM UTC (4:45 PM ET) |
 | **Save High Volume Ever** | `50 20 * * *` | Daily at 8:50 PM UTC (4:50 PM ET) |
+
+### 4. Non-Daily Cron Jobs (Supabase)
+
+The following jobs are configured to run via Supabase Edge Functions or pg_cron:
+
+- **Historical Data Ingestion** - Every 4 hours (use Supabase pg_cron)
+- **Watchlist Price Update** - Every 15 minutes (use Supabase Edge Functions)
+- **Market Statistics Aggregation** - Every 5 minutes (use Supabase Edge Functions)
+
+The API routes for these jobs still exist in this directory and can be called manually or via Supabase:
+- `/api/cron/historicals`
+- `/api/cron/watchlist-prices`
+- `/api/cron/market-aggregate`
 
 ## Security
 
@@ -57,4 +69,4 @@ Monitor your cron jobs in the Vercel dashboard under the "Cron Jobs" section. Yo
 2. **401 Unauthorized errors**: Check that `CRON_SECRET` is set in Vercel environment variables
 3. **Backend errors**: Check the backend API is accessible and responding correctly
 4. **Timezone issues**: All schedules are in UTC. Adjust accordingly for your timezone needs.
-
+5. **Hobby plan limitations**: Vercel Hobby plan only supports daily cron jobs. For more frequent jobs, use Supabase Edge Functions or pg_cron.

@@ -5,20 +5,8 @@
       "schedule": "0 2 * * *"
     },
     {
-      "path": "/api/cron/historicals",
-      "schedule": "0 */4 * * *"
-    },
-    {
       "path": "/api/cron/fundamental-data",
-      "schedule": "0 3 * * 0"
-    },
-    {
-      "path": "/api/cron/watchlist-prices",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/market-aggregate",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/cron/market-eod",

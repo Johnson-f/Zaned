@@ -5,8 +5,9 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://zaned-back
 
 /**
  * Fundamental Data Ingestion Cron Job
- * Runs weekly on Sundays at 3:00 AM UTC
+ * Runs daily at 3:00 AM UTC
  * Fetches fundamental data (income, balance, cashflow) for all symbols
+ * Note: Changed from weekly to daily due to Vercel Hobby plan limitations
  */
 export async function GET(request: NextRequest) {
   // Verify cron request to prevent unauthorized access
