@@ -1,0 +1,45 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/company-info",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/historicals",
+      "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/cron/fundamental-data",
+      "schedule": "0 3 * * 0"
+    },
+    {
+      "path": "/api/cron/watchlist-prices",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/market-aggregate",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/market-eod",
+      "schedule": "30 20 * * *"
+    },
+    {
+      "path": "/api/cron/save-inside-day",
+      "schedule": "35 20 * * *"
+    },
+    {
+      "path": "/api/cron/save-high-volume-quarter",
+      "schedule": "40 20 * * *"
+    },
+    {
+      "path": "/api/cron/save-high-volume-year",
+      "schedule": "45 20 * * *"
+    },
+    {
+      "path": "/api/cron/save-high-volume-ever",
+      "schedule": "50 20 * * *"
+    }
+  ]
+}
+
