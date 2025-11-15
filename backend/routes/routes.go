@@ -217,6 +217,95 @@ func SetupRoutes(app *fiber.App) {
 			})
 		})
 
+		// Cache management endpoints (public admin)
+		// Manual persistence trigger
+		public.Post("/admin/cache/persist", func(c *fiber.Ctx) error {
+			persister := caching.NewPersister()
+			err := persister.TriggerManualPersistence()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success":      true,
+				"message":      "Persistence triggered successfully",
+				"triggered_at": time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		// Refresh symbols cache
+		public.Post("/admin/cache/symbols/refresh", func(c *fiber.Ctx) error {
+			symbolCache := caching.NewSymbolCache()
+			err := symbolCache.RefreshSymbols()
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"success": false,
+					"error":   "Internal Server Error",
+					"message": err.Error(),
+				})
+			}
+
+			return c.JSON(fiber.Map{
+				"success":      true,
+				"message":      "Symbols cache refreshed successfully",
+				"refreshed_at": time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		// Cache statistics
+		public.Get("/admin/cache/stats", func(c *fiber.Ctx) error {
+			dataCache := caching.NewDataCache()
+
+			// Get key counts for each data type
+			historicalKeys, _ := dataCache.GetAllHistoricalKeys()
+			companyInfoKeys, _ := dataCache.GetAllCompanyInfoKeys()
+			fundamentalKeys, _ := dataCache.GetAllFundamentalDataKeys()
+			marketStatsKeys, _ := dataCache.GetAllMarketStatisticsKeys()
+
+			// Get symbol cache status
+			symbolCache := caching.NewSymbolCache()
+			symbols, err := symbolCache.GetAllSymbols()
+			symbolCount := 0
+			if err == nil {
+				symbolCount = len(symbols)
+			}
+
+			// Get persister status
+			persister := caching.NewPersister()
+			nextRunTime := persister.GetNextRunTime()
+			isRunning := persister.IsRunning()
+
+			return c.JSON(fiber.Map{
+				"success": true,
+				"data": fiber.Map{
+					"symbols": fiber.Map{
+						"cached_count": symbolCount,
+					},
+					"historical_data": fiber.Map{
+						"cached_keys": len(historicalKeys),
+					},
+					"company_info": fiber.Map{
+						"cached_keys": len(companyInfoKeys),
+					},
+					"fundamental_data": fiber.Map{
+						"cached_keys": len(fundamentalKeys),
+					},
+					"market_statistics": fiber.Map{
+						"cached_keys": len(marketStatsKeys),
+					},
+					"persistence_worker": fiber.Map{
+						"running":       isRunning,
+						"next_run_time": nextRunTime.Format(time.RFC3339),
+					},
+					"total_cached_keys": len(historicalKeys) + len(companyInfoKeys) + len(fundamentalKeys) + len(marketStatsKeys),
+				},
+			})
+		})
+
 		// Market statistics historical data endpoint (public): get historical market statistics for charting
 		public.Get("/market-statistics", func(c *fiber.Ctx) error {
 			statsService := service.NewMarketStatisticsService()

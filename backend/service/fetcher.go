@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -137,27 +138,11 @@ func NewFetcherService() *FetcherService {
 	}
 }
 
-// getAllSymbols retrieves all unique symbols from screener table with caching
-// This reduces database egress costs when processing 8,000+ symbols
+// getAllSymbols retrieves all unique symbols from Redis cache (loaded on startup)
+// Falls back to database if Redis is unavailable
 func (s *FetcherService) getAllSymbols() ([]string, error) {
-	cacheKey := caching.GenerateKeyFromPath("screener/symbols")
-	var symbols []string
-
-	// Try to get from cache
-	found, err := s.cache.GetJSON(cacheKey, &symbols)
-	if err == nil && found {
-		return symbols, nil
-	}
-
-	// Cache miss - query database
-	if err := s.db.Model(&model.Screener{}).Distinct("symbol").Pluck("symbol", &symbols).Error; err != nil {
-		return nil, fmt.Errorf("failed to load screener symbols: %w", err)
-	}
-
-	// Store in cache
-	_ = s.cache.SetJSON(cacheKey, symbols, s.ttl.Symbols)
-
-	return symbols, nil
+	symbolCache := caching.NewSymbolCache()
+	return symbolCache.GetAllSymbols()
 }
 
 // RunIngestion fetches and stores data for all symbols concurrently. Suitable for cron trigger.
@@ -205,16 +190,39 @@ func (s *FetcherService) RunIngestion(ctx context.Context, concurrency int) (str
 }
 
 // processSymbol fetches 1d/1m, aggregates to daily and updates Screener, then fetches 1d/30m into Historical.
+// Data is saved to Redis ONLY (no immediate database writes)
 func (s *FetcherService) processSymbol(ctx context.Context, symbol string) error {
+	dataCache := caching.NewDataCache()
+	
 	// 0) Daily backfill for last 10 years (1d interval)
-	_ = s.fetchAndUpsertDaily10y(ctx, symbol)
+	bars10y, err := s.fetchBars(ctx, symbol, "10y", "1d")
+	if err == nil && len(bars10y) > 0 {
+		batch10y := make([]model.Historical, 0, len(bars10y))
+		for _, b := range bars10y {
+			batch10y = append(batch10y, model.Historical{
+				Symbol:   symbol,
+				Epoch:    b.Epoch,
+				Range:    "10y",
+				Interval: "1d",
+				Open:     b.Open,
+				High:     b.High,
+				Low:      b.Low,
+				Close:    b.Close,
+				AdjClose: b.AdjClose,
+				Volume:   b.Volume,
+			})
+		}
+		// Save to Redis ONLY
+		_ = dataCache.CacheHistorical(symbol, "10y", "1d", batch10y)
+	}
+	
 	// 1) Screener update from 1d/1m aggregated to daily
 	bars1m, err := s.fetchBars(ctx, symbol, "1d", "1m")
 	if err == nil && len(bars1m) > 0 {
 		daily := aggregateDailyFromIntraday(bars1m)
 		if daily != nil {
-			// Upsert/update Screener row
-			// Only update price fields; keep other fields intact (e.g., logo)
+			// Note: Screener updates still go to database immediately (price updates are critical)
+			// Only historical data goes to Redis first
 			updates := map[string]interface{}{
 				"open":   daily.Open,
 				"high":   daily.High,
@@ -226,13 +234,13 @@ func (s *FetcherService) processSymbol(ctx context.Context, symbol string) error
 		}
 	}
 
-	// 2) Historical: store 1d/30m into historical table
+	// 2) Historical: store 1d/30m into Redis ONLY (no database write)
 	bars30m, err := s.fetchBars(ctx, symbol, "1d", "30m")
 	if err != nil || len(bars30m) == 0 {
 		return err
 	}
 
-	// Prepare upsert batch
+	// Prepare batch
 	batch := make([]model.Historical, 0, len(bars30m))
 	for _, b := range bars30m {
 		batch = append(batch, model.Historical{
@@ -248,33 +256,16 @@ func (s *FetcherService) processSymbol(ctx context.Context, symbol string) error
 			Volume:   b.Volume,
 		})
 	}
-	return s.histService.UpsertHistoricalBatch(batch)
+	
+	// Save to Redis ONLY (background worker will persist to database)
+	return dataCache.CacheHistorical(symbol, "1d", "30m", batch)
 }
 
-// fetchAndUpsertDaily10y fetches last 10 years of daily bars and upserts them
+// fetchAndUpsertDaily10y is now handled in processSymbol
+// This method is kept for backward compatibility but is no longer used
 func (s *FetcherService) fetchAndUpsertDaily10y(ctx context.Context, symbol string) error {
-	bars, err := s.fetchBars(ctx, symbol, "10y", "1d")
-	if err != nil || len(bars) == 0 {
-		return err
-	}
-
-	batch := make([]model.Historical, 0, len(bars))
-	for _, b := range bars {
-		batch = append(batch, model.Historical{
-			Symbol:   symbol,
-			Epoch:    b.Epoch,
-			Range:    "10y",
-			Interval: "1d",
-			Open:     b.Open,
-			High:     b.High,
-			Low:      b.Low,
-			Close:    b.Close,
-			AdjClose: b.AdjClose,
-			Volume:   b.Volume,
-		})
-	}
-
-	return s.histService.UpsertHistoricalBatch(batch)
+	// This is now handled in processSymbol
+	return nil
 }
 
 // externalBar represents a single bar returned by the external API after normalization
@@ -636,13 +627,55 @@ func (s *FetcherService) RunCompanyInfoIngestion(ctx context.Context) (string, e
 			continue
 		}
 
-		// Upsert company info with the fetched data
-		upserted, err := s.upsertCompanyInfoFromQuotes(quotes)
-		if err != nil {
-			// Log error but continue
+		// Cache company info in Redis ONLY (no immediate database write)
+		dataCache := caching.NewDataCache()
+		for _, quote := range quotes {
+			if quote.Symbol == "" {
 			continue
 		}
-		totalUpserted += upserted
+			
+			companyInfo := model.CompanyInfo{
+				Symbol:           quote.Symbol,
+				Name:             quote.Name,
+				Price:            quote.Price,
+				AfterHoursPrice:  quote.AfterHoursPrice,
+				Change:           quote.Change,
+				PercentChange:    quote.PercentChange,
+				Open:             quote.Open,
+				High:             quote.High,
+				Low:              quote.Low,
+				YearHigh:         quote.YearHigh,
+				YearLow:          quote.YearLow,
+				Volume:           quote.Volume,
+				AvgVolume:        quote.AvgVolume,
+				MarketCap:        quote.MarketCap,
+				Beta:             quote.Beta,
+				PE:               quote.PE,
+				EarningsDate:     quote.EarningsDate,
+				Sector:           quote.Sector,
+				Industry:         quote.Industry,
+				About:            quote.About,
+				Employees:        quote.Employees,
+				FiveDaysReturn:   quote.FiveDaysReturn,
+				OneMonthReturn:   quote.OneMonthReturn,
+				ThreeMonthReturn: quote.ThreeMonthReturn,
+				SixMonthReturn:   quote.SixMonthReturn,
+				YtdReturn:        quote.YtdReturn,
+				YearReturn:       quote.YearReturn,
+				ThreeYearReturn:  quote.ThreeYearReturn,
+				FiveYearReturn:   quote.FiveYearReturn,
+				TenYearReturn:    quote.TenYearReturn,
+				MaxReturn:        quote.MaxReturn,
+				Logo:             quote.Logo,
+			}
+			
+			// Save to Redis ONLY
+			if err := dataCache.CacheCompanyInfo(quote.Symbol, &companyInfo); err != nil {
+				log.Printf("Warning: Failed to cache company info for %s: %v", quote.Symbol, err)
+			} else {
+				totalUpserted++
+			}
+		}
 	}
 
 	return fmt.Sprintf("company-info-ingestion-%d", time.Now().UnixNano()), nil
@@ -938,9 +971,26 @@ func (s *FetcherService) RunFundamentalDataIngestion(ctx context.Context) (strin
 					continue
 				}
 
-				// Upsert into database
-				if err := s.upsertFundamentalData(financialData); err != nil {
-					// Log error but continue
+				// Cache in Redis ONLY (no immediate database write)
+				dataCache := caching.NewDataCache()
+				
+				// Convert statement map to JSON string
+				statementJSON, err := json.Marshal(financialData.Statement)
+				if err != nil {
+					log.Printf("Warning: Failed to marshal statement for %s: %v", symbol, err)
+					continue
+				}
+				
+				fundamentalDataRecord := model.FundamentalData{
+					Symbol:        financialData.Symbol,
+					StatementType: financialData.StatementType,
+					Frequency:     financialData.Frequency,
+					Statement:     string(statementJSON),
+				}
+				
+				// Save to Redis ONLY
+				if err := dataCache.CacheFundamentalData(symbol, statementType, frequency, &fundamentalDataRecord); err != nil {
+					log.Printf("Warning: Failed to cache fundamental data for %s: %v", symbol, err)
 					continue
 				}
 				totalUpserted++

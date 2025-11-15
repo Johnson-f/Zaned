@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -151,7 +152,8 @@ func (s *MarketStatisticsService) GetMarketStatsForFrontend() (map[string]interf
 	return stats, nil
 }
 
-// StoreEndOfDayStats saves today's aggregated stats to database
+// StoreEndOfDayStats saves today's aggregated stats to Redis ONLY (no immediate database write)
+// Background worker will persist to database later
 func (s *MarketStatisticsService) StoreEndOfDayStats(ctx context.Context) error {
 	stats, err := s.GetCurrentDayStats()
 	if err != nil {
@@ -168,37 +170,45 @@ func (s *MarketStatisticsService) StoreEndOfDayStats(ctx context.Context) error 
 		TotalStocks:     stats["total"],
 	}
 
-	// Upsert using ON CONFLICT
-	result := s.db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "date"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"stocks_up", "stocks_down", "stocks_unchanged", "total_stocks", "updated_at",
-		}),
-	}).Create(&marketStats)
+	// Save to Redis ONLY
+	dataCache := caching.NewDataCache()
+	dateStr := today.Format("2006-01-02")
+	if err := dataCache.CacheMarketStatistics(dateStr, &marketStats); err != nil {
+		// If Redis fails, fallback to database
+		log.Printf("Warning: Failed to cache market statistics, falling back to database: %v", err)
+		result := s.db.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "date"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"stocks_up", "stocks_down", "stocks_unchanged", "total_stocks", "updated_at",
+			}),
+		}).Create(&marketStats)
+		return result.Error
+	}
 
-	return result.Error
+	return nil
 }
 
 // GetHistoricalStats fetches market statistics for charting
+// Checks Redis first, then database
 func (s *MarketStatisticsService) GetHistoricalStats(ctx context.Context, startDate, endDate time.Time) ([]model.MarketStatistics, error) {
-	cacheKey := caching.GenerateKey("market-statistics", map[string]string{
-		"startDate": startDate.Format("2006-01-02"),
-		"endDate":   endDate.Format("2006-01-02"),
-	})
-	var stats []model.MarketStatistics
+	// For date range queries, we need to check database
+	// Individual dates are cached in Redis, but range queries are more efficient from database
+	// We can optimize this later by caching ranges
 	
-	found, err := s.cache.GetJSON(cacheKey, &stats)
-	if err == nil && found {
-		return stats, nil
-	}
-
-	err = s.db.Where("date >= ? AND date <= ?", startDate, endDate).
+	var stats []model.MarketStatistics
+	err := s.db.Where("date >= ? AND date <= ?", startDate, endDate).
 		Order("date ASC").
 		Find(&stats).Error
 	if err != nil {
 		return nil, err
 	}
 	
-	_ = s.cache.SetJSON(cacheKey, stats, s.ttl.MarketStatistics)
+	// Cache individual dates in Redis for future lookups
+	dataCache := caching.NewDataCache()
+	for _, stat := range stats {
+		dateStr := stat.Date.Format("2006-01-02")
+		_ = dataCache.CacheMarketStatistics(dateStr, &stat)
+	}
+	
 	return stats, err
 }

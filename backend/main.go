@@ -31,10 +31,27 @@ func main() {
 	log.Println("Database connection established")
 
 	// Initialize Redis cache connection
+	var persister *caching.Persister
 	if err := caching.InitRedis(); err != nil {
 		log.Printf("Warning: Failed to initialize Redis cache: %v. Continuing without cache.", err)
 	} else {
 		log.Println("Redis cache connection established")
+
+		// Load all symbols into Redis cache on startup
+		symbolCache := caching.NewSymbolCache()
+		if err := symbolCache.LoadAllSymbols(); err != nil {
+			log.Printf("Warning: Failed to load symbols into cache: %v. Continuing without symbol cache.", err)
+		} else {
+			log.Println("Symbols loaded into Redis cache")
+		}
+
+		// Start background persistence worker
+		persister = caching.NewPersister()
+		if err := persister.Start(); err != nil {
+			log.Printf("Warning: Failed to start persistence worker: %v. Continuing without persistence worker.", err)
+		} else {
+			log.Println("Background persistence worker started")
+		}
 	}
 
 	// Run database migrations
@@ -126,6 +143,12 @@ func main() {
 	// Gracefully shutdown the server
 	if err := app.Shutdown(); err != nil {
 		log.Printf("Error during shutdown: %v", err)
+	}
+
+	// Stop persistence worker
+	if persister != nil {
+		persister.Stop()
+		log.Println("Background persistence worker stopped")
 	}
 
 	// Close Redis connection

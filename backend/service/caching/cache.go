@@ -61,13 +61,15 @@ func (c *CacheService) GetJSON(key string, dest interface{}) (bool, error) {
 }
 
 // Set stores a value in cache with TTL
+// If ttl is 0, the key is stored permanently (no expiration)
 func (c *CacheService) Set(key string, value []byte, ttl time.Duration) error {
 	if c.client == nil {
 		return fmt.Errorf("redis client not initialized")
 	}
 
-	if ttl <= 0 {
-		// If TTL is 0 or negative, don't cache
+	// If TTL is 0, store permanently (no expiration)
+	// If TTL is negative, don't cache
+	if ttl < 0 {
 		return nil
 	}
 

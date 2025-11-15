@@ -50,22 +50,22 @@ func (s *CompanyInfoService) GetAllCompanyInfo() ([]model.CompanyInfo, error) {
 }
 
 // GetCompanyInfoBySymbol fetches company info by symbol
+// Checks Redis first, then database
 func (s *CompanyInfoService) GetCompanyInfoBySymbol(symbol string) (*model.CompanyInfo, error) {
 	if symbol == "" {
 		return nil, errors.New("symbol is required")
 	}
 
-	// Try to get from cache
-	cacheKey := caching.GenerateKeyFromPath(fmt.Sprintf("company-info/%s", symbol))
-	var companyInfo model.CompanyInfo
-	
-	found, err := s.cache.GetJSON(cacheKey, &companyInfo)
+	// Check Redis first (using DataCache)
+	dataCache := caching.NewDataCache()
+	companyInfo, found, err := dataCache.GetCompanyInfo(symbol)
 	if err == nil && found {
-		return &companyInfo, nil
+		return companyInfo, nil
 	}
 
-	// Cache miss - query database
-	result := s.db.Where("symbol = ?", symbol).First(&companyInfo)
+	// Redis miss - check database
+	var dbCompanyInfo model.CompanyInfo
+	result := s.db.Where("symbol = ?", symbol).First(&dbCompanyInfo)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, errors.New("record not found")
@@ -73,10 +73,10 @@ func (s *CompanyInfoService) GetCompanyInfoBySymbol(symbol string) (*model.Compa
 		return nil, fmt.Errorf("failed to fetch company info: %w", result.Error)
 	}
 
-	// Store in cache
-	_ = s.cache.SetJSON(cacheKey, companyInfo, s.ttl.CompanyInfo)
+	// If found in database, cache it in Redis for next time
+	_ = dataCache.CacheCompanyInfo(symbol, &dbCompanyInfo)
 
-	return &companyInfo, nil
+	return &dbCompanyInfo, nil
 }
 
 // GetCompanyInfoBySymbols fetches multiple company info records by symbols

@@ -129,24 +129,22 @@ func (s *FundamentalDataService) GetFundamentalDataBySymbolAndType(symbol, state
 }
 
 // GetFundamentalDataBySymbolTypeAndFrequency fetches fundamental data by symbol, statement type, and frequency
+// Checks Redis first, then database
 func (s *FundamentalDataService) GetFundamentalDataBySymbolTypeAndFrequency(symbol, statementType, frequency string) (*model.FundamentalData, error) {
 	if symbol == "" || statementType == "" || frequency == "" {
 		return nil, errors.New("symbol, statement type, and frequency are required")
 	}
 
-	cacheKey := caching.GenerateKey("fundamental-data/symbol", map[string]string{
-		"symbol":        symbol,
-		"statementType": statementType,
-		"frequency":     frequency,
-	})
-	var fundamentalData model.FundamentalData
-	
-	found, err := s.cache.GetJSON(cacheKey, &fundamentalData)
+	// Check Redis first (using DataCache)
+	dataCache := caching.NewDataCache()
+	fundamentalData, found, err := dataCache.GetFundamentalData(symbol, statementType, frequency)
 	if err == nil && found {
-		return &fundamentalData, nil
+		return fundamentalData, nil
 	}
 
-	result := s.db.Where("symbol = ? AND statement_type = ? AND frequency = ?", symbol, statementType, frequency).First(&fundamentalData)
+	// Redis miss - check database
+	var dbFundamentalData model.FundamentalData
+	result := s.db.Where("symbol = ? AND statement_type = ? AND frequency = ?", symbol, statementType, frequency).First(&dbFundamentalData)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, errors.New("record not found")
@@ -154,8 +152,9 @@ func (s *FundamentalDataService) GetFundamentalDataBySymbolTypeAndFrequency(symb
 		return nil, fmt.Errorf("failed to fetch fundamental data: %w", result.Error)
 	}
 	
-	_ = s.cache.SetJSON(cacheKey, fundamentalData, s.ttl.FundamentalData)
-	return &fundamentalData, nil
+	// If found in database, cache it in Redis for next time
+	_ = dataCache.CacheFundamentalData(symbol, statementType, frequency, &dbFundamentalData)
+	return &dbFundamentalData, nil
 }
 
 // GetFundamentalDataByStatementType fetches all fundamental data for a specific statement type

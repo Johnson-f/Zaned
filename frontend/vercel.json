@@ -7,26 +7,6 @@
     {
       "path": "/api/cron/fundamental-data",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/market-eod",
-      "schedule": "30 20 * * *"
-    },
-    {
-      "path": "/api/cron/save-inside-day",
-      "schedule": "35 20 * * *"
-    },
-    {
-      "path": "/api/cron/save-high-volume-quarter",
-      "schedule": "40 20 * * *"
-    },
-    {
-      "path": "/api/cron/save-high-volume-year",
-      "schedule": "45 20 * * *"
-    },
-    {
-      "path": "/api/cron/save-high-volume-ever",
-      "schedule": "50 20 * * *"
     }
   ]
 }

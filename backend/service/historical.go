@@ -3,6 +3,8 @@ package service
 import (
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"screener/backend/database"
 	"screener/backend/model"
 	"screener/backend/service/caching"
@@ -55,6 +57,7 @@ func (s *HistoricalService) GetHistoricalByID(id string) (*model.Historical, err
 }
 
 // GetHistoricalBySymbolRangeInterval fetches historical records filtered by symbol, range, and interval
+// Checks Redis first, then database, then external API if needed
 // Returns records ordered by epoch ascending
 func (s *HistoricalService) GetHistoricalBySymbolRangeInterval(symbol, rangeParam, interval string) ([]model.Historical, error) {
 	if symbol == "" {
@@ -67,15 +70,31 @@ func (s *HistoricalService) GetHistoricalBySymbolRangeInterval(symbol, rangePara
 		return nil, errors.New("interval is required")
 	}
 
-	var historical []model.Historical
+	// Check Redis first
+	dataCache := caching.NewDataCache()
+	historical, found, err := dataCache.GetHistorical(symbol, rangeParam, interval)
+	if err == nil && found {
+		return historical, nil
+	}
+
+	// Redis miss - check database
+	var dbHistorical []model.Historical
 	result := s.db.Where("symbol = ? AND range = ? AND interval = ?", symbol, rangeParam, interval).
 		Order("epoch ASC").
-		Find(&historical)
+		Find(&dbHistorical)
 	if result.Error != nil {
 		return nil, result.Error
 	}
 
-	return historical, nil
+	// If found in database, cache it in Redis for next time
+	if len(dbHistorical) > 0 {
+		_ = dataCache.CacheHistorical(symbol, rangeParam, interval, dbHistorical)
+		return dbHistorical, nil
+	}
+
+	// Database miss - would need to fetch from external API
+	// This is handled by the fetcher service, so we just return empty
+	return []model.Historical{}, nil
 }
 
 // CreateHistorical creates a new historical record
@@ -131,28 +150,52 @@ func (s *HistoricalService) UpsertHistorical(historical *model.Historical) error
 	return nil
 }
 
-// UpsertHistoricalBatch upserts multiple historical records
+// UpsertHistoricalBatch saves historical records to Redis ONLY (no immediate database write)
+// Background worker will persist to database later
 func (s *HistoricalService) UpsertHistoricalBatch(historical []model.Historical) error {
 	if len(historical) == 0 {
 		return errors.New("historical records cannot be empty")
 	}
 
-	// Prefer bulk upsert using ON CONFLICT for performance
-	// Requires unique index on (symbol, epoch, range, interval)
-	return s.db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{
-			{Name: "symbol"}, {Name: "epoch"}, {Name: "range"}, {Name: "interval"},
-		},
-		DoUpdates: clause.Assignments(map[string]interface{}{
-			"open":       gorm.Expr("excluded.open"),
-			"high":       gorm.Expr("excluded.high"),
-			"low":        gorm.Expr("excluded.low"),
-			"close":      gorm.Expr("excluded.close"),
-			"adj_close":  gorm.Expr("excluded.adj_close"),
-			"volume":     gorm.Expr("excluded.volume"),
-			"updated_at": gorm.Expr("NOW()"),
-		}),
-	}).CreateInBatches(historical, 100).Error
+	// Group by symbol, range, and interval
+	grouped := make(map[string][]model.Historical)
+	for _, h := range historical {
+		key := fmt.Sprintf("%s:%s:%s", h.Symbol, h.Range, h.Interval)
+		grouped[key] = append(grouped[key], h)
+	}
+
+	// Cache each group in Redis
+	dataCache := caching.NewDataCache()
+	for key, batch := range grouped {
+		// Extract symbol, range, interval from key
+		parts := strings.Split(key, ":")
+		if len(parts) != 3 {
+			continue
+		}
+		symbol, rangeParam, interval := parts[0], parts[1], parts[2]
+		
+		// Save to Redis ONLY
+		if err := dataCache.CacheHistorical(symbol, rangeParam, interval, batch); err != nil {
+			// If Redis fails, fallback to database
+			log.Printf("Warning: Failed to cache historical data, falling back to database: %v", err)
+			return s.db.Clauses(clause.OnConflict{
+				Columns: []clause.Column{
+					{Name: "symbol"}, {Name: "epoch"}, {Name: "range"}, {Name: "interval"},
+				},
+				DoUpdates: clause.Assignments(map[string]interface{}{
+					"open":       gorm.Expr("excluded.open"),
+					"high":       gorm.Expr("excluded.high"),
+					"low":        gorm.Expr("excluded.low"),
+					"close":      gorm.Expr("excluded.close"),
+					"adj_close":  gorm.Expr("excluded.adj_close"),
+					"volume":     gorm.Expr("excluded.volume"),
+					"updated_at": gorm.Expr("NOW()"),
+				}),
+			}).CreateInBatches(batch, 100).Error
+		}
+	}
+
+	return nil
 }
 
 // UpdateHistorical updates an existing historical record
