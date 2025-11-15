@@ -84,7 +84,7 @@ export const apiConfig = {
     admin: {
       ingestHistoricals: "/admin/ingest/historicals",
       updateWatchlistPrices: "/admin/watchlist/update-prices",
-      ingestCompanyInfo: "/admin/ingest/company-info",
+      ingestCompanyInfo: "/admin/ingest/company-data",
       ingestFundamentalData: "/admin/ingest/fundamental-data",
       marketStatisticsAggregate: "/admin/market-statistics/aggregate",
       marketStatisticsStoreEod: "/admin/market-statistics/store-eod",

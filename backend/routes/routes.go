@@ -112,7 +112,7 @@ func SetupRoutes(app *fiber.App) {
 		})
 
 		// Company info ingestion endpoint (public): trigger company info fetch for all screener symbols
-		public.Post("/admin/ingest/company-info", func(c *fiber.Ctx) error {
+		public.Post("/admin/ingest/company-data", func(c *fiber.Ctx) error {
 			fetcher := service.NewFetcherService()
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()

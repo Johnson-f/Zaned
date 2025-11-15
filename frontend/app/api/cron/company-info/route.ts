@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/admin/ingest/company-info`, {
+    const response = await fetch(`${API_BASE_URL}/api/admin/ingest/company-data`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
