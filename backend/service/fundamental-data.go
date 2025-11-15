@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"screener/backend/database"
 	"screener/backend/model"
+	"screener/backend/service/caching"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,13 +16,17 @@ import (
 
 // FundamentalDataService contains business logic for fundamental data operations
 type FundamentalDataService struct {
-	db *gorm.DB
+	db    *gorm.DB
+	cache *caching.CacheService
+	ttl   *caching.CacheTTLConfig
 }
 
 // NewFundamentalDataService creates a new instance of FundamentalDataService
 func NewFundamentalDataService() *FundamentalDataService {
 	return &FundamentalDataService{
-		db: database.GetDB(),
+		db:    database.GetDB(),
+		cache: caching.NewCacheService(),
+		ttl:   caching.GetTTLConfig(),
 	}
 }
 
@@ -66,11 +71,20 @@ type FundamentalMetrics struct {
 
 // GetAllFundamentalData fetches all fundamental data records
 func (s *FundamentalDataService) GetAllFundamentalData() ([]model.FundamentalData, error) {
+	cacheKey := caching.GenerateKeyFromPath("fundamental-data")
 	var fundamentalData []model.FundamentalData
+	
+	found, err := s.cache.GetJSON(cacheKey, &fundamentalData)
+	if err == nil && found {
+		return fundamentalData, nil
+	}
+
 	result := s.db.Find(&fundamentalData)
 	if result.Error != nil {
 		return nil, fmt.Errorf("failed to fetch all fundamental data: %w", result.Error)
 	}
+	
+	_ = s.cache.SetJSON(cacheKey, fundamentalData, s.ttl.FundamentalData)
 	return fundamentalData, nil
 }
 
@@ -80,11 +94,20 @@ func (s *FundamentalDataService) GetFundamentalDataBySymbol(symbol string) ([]mo
 		return nil, errors.New("symbol is required")
 	}
 
+	cacheKey := caching.GenerateKeyFromPath(fmt.Sprintf("fundamental-data/symbol/%s", symbol))
 	var fundamentalData []model.FundamentalData
+	
+	found, err := s.cache.GetJSON(cacheKey, &fundamentalData)
+	if err == nil && found {
+		return fundamentalData, nil
+	}
+
 	result := s.db.Where("symbol = ?", symbol).Find(&fundamentalData)
 	if result.Error != nil {
 		return nil, fmt.Errorf("failed to fetch fundamental data by symbol: %w", result.Error)
 	}
+	
+	_ = s.cache.SetJSON(cacheKey, fundamentalData, s.ttl.FundamentalData)
 	return fundamentalData, nil
 }
 
@@ -111,7 +134,18 @@ func (s *FundamentalDataService) GetFundamentalDataBySymbolTypeAndFrequency(symb
 		return nil, errors.New("symbol, statement type, and frequency are required")
 	}
 
+	cacheKey := caching.GenerateKey("fundamental-data/symbol", map[string]string{
+		"symbol":        symbol,
+		"statementType": statementType,
+		"frequency":     frequency,
+	})
 	var fundamentalData model.FundamentalData
+	
+	found, err := s.cache.GetJSON(cacheKey, &fundamentalData)
+	if err == nil && found {
+		return &fundamentalData, nil
+	}
+
 	result := s.db.Where("symbol = ? AND statement_type = ? AND frequency = ?", symbol, statementType, frequency).First(&fundamentalData)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -119,6 +153,8 @@ func (s *FundamentalDataService) GetFundamentalDataBySymbolTypeAndFrequency(symb
 		}
 		return nil, fmt.Errorf("failed to fetch fundamental data: %w", result.Error)
 	}
+	
+	_ = s.cache.SetJSON(cacheKey, fundamentalData, s.ttl.FundamentalData)
 	return &fundamentalData, nil
 }
 

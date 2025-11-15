@@ -5,29 +5,46 @@ import (
 	"fmt"
 	"screener/backend/database"
 	"screener/backend/model"
+	"screener/backend/service/caching"
 
 	"gorm.io/gorm"
 )
 
 // CompanyInfoService contains business logic for company info operations
 type CompanyInfoService struct {
-	db *gorm.DB
+	db    *gorm.DB
+	cache *caching.CacheService
+	ttl   *caching.CacheTTLConfig
 }
 
 // NewCompanyInfoService creates a new instance of CompanyInfoService
 func NewCompanyInfoService() *CompanyInfoService {
 	return &CompanyInfoService{
-		db: database.GetDB(),
+		db:    database.GetDB(),
+		cache: caching.NewCacheService(),
+		ttl:   caching.GetTTLConfig(),
 	}
 }
 
 // GetAllCompanyInfo fetches all company info records (read-only)
 func (s *CompanyInfoService) GetAllCompanyInfo() ([]model.CompanyInfo, error) {
+	// Try to get from cache
+	cacheKey := caching.GenerateKeyFromPath("company-info")
 	var companyInfo []model.CompanyInfo
+	
+	found, err := s.cache.GetJSON(cacheKey, &companyInfo)
+	if err == nil && found {
+		return companyInfo, nil
+	}
+
+	// Cache miss - query database
 	result := s.db.Find(&companyInfo)
 	if result.Error != nil {
 		return nil, fmt.Errorf("failed to fetch company info: %w", result.Error)
 	}
+
+	// Store in cache
+	_ = s.cache.SetJSON(cacheKey, companyInfo, s.ttl.CompanyInfo)
 
 	return companyInfo, nil
 }
@@ -38,7 +55,16 @@ func (s *CompanyInfoService) GetCompanyInfoBySymbol(symbol string) (*model.Compa
 		return nil, errors.New("symbol is required")
 	}
 
+	// Try to get from cache
+	cacheKey := caching.GenerateKeyFromPath(fmt.Sprintf("company-info/%s", symbol))
 	var companyInfo model.CompanyInfo
+	
+	found, err := s.cache.GetJSON(cacheKey, &companyInfo)
+	if err == nil && found {
+		return &companyInfo, nil
+	}
+
+	// Cache miss - query database
 	result := s.db.Where("symbol = ?", symbol).First(&companyInfo)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -46,6 +72,9 @@ func (s *CompanyInfoService) GetCompanyInfoBySymbol(symbol string) (*model.Compa
 		}
 		return nil, fmt.Errorf("failed to fetch company info: %w", result.Error)
 	}
+
+	// Store in cache
+	_ = s.cache.SetJSON(cacheKey, companyInfo, s.ttl.CompanyInfo)
 
 	return &companyInfo, nil
 }
@@ -56,11 +85,25 @@ func (s *CompanyInfoService) GetCompanyInfoBySymbols(symbols []string) ([]model.
 		return []model.CompanyInfo{}, nil
 	}
 
+	// Create cache key from symbols (sorted for consistency)
+	cacheKey := caching.GenerateKey("company-info/symbols", map[string]string{
+		"symbols": fmt.Sprintf("%v", symbols),
+	})
 	var companyInfo []model.CompanyInfo
+	
+	found, err := s.cache.GetJSON(cacheKey, &companyInfo)
+	if err == nil && found {
+		return companyInfo, nil
+	}
+
+	// Cache miss - query database
 	result := s.db.Where("symbol IN ?", symbols).Find(&companyInfo)
 	if result.Error != nil {
 		return nil, fmt.Errorf("failed to fetch company info: %w", result.Error)
 	}
+
+	// Store in cache
+	_ = s.cache.SetJSON(cacheKey, companyInfo, s.ttl.CompanyInfo)
 
 	return companyInfo, nil
 }
@@ -71,7 +114,18 @@ func (s *CompanyInfoService) SearchCompanyInfo(searchTerm string) ([]model.Compa
 		return []model.CompanyInfo{}, nil
 	}
 
+	// Try to get from cache
+	cacheKey := caching.GenerateKey("company-info/search", map[string]string{
+		"q": searchTerm,
+	})
 	var companyInfo []model.CompanyInfo
+	
+	found, err := s.cache.GetJSON(cacheKey, &companyInfo)
+	if err == nil && found {
+		return companyInfo, nil
+	}
+
+	// Cache miss - query database
 	searchPattern := "%" + searchTerm + "%"
 	result := s.db.Where(
 		"name ILIKE ? OR sector ILIKE ? OR industry ILIKE ? OR symbol ILIKE ?",
@@ -80,6 +134,9 @@ func (s *CompanyInfoService) SearchCompanyInfo(searchTerm string) ([]model.Compa
 	if result.Error != nil {
 		return nil, fmt.Errorf("failed to search company info: %w", result.Error)
 	}
+
+	// Store in cache
+	_ = s.cache.SetJSON(cacheKey, companyInfo, s.ttl.CompanyInfo)
 
 	return companyInfo, nil
 }
@@ -90,11 +147,23 @@ func (s *CompanyInfoService) GetCompanyInfoBySector(sector string) ([]model.Comp
 		return []model.CompanyInfo{}, nil
 	}
 
+	// Try to get from cache
+	cacheKey := caching.GenerateKeyFromPath(fmt.Sprintf("company-info/sector/%s", sector))
 	var companyInfo []model.CompanyInfo
+	
+	found, err := s.cache.GetJSON(cacheKey, &companyInfo)
+	if err == nil && found {
+		return companyInfo, nil
+	}
+
+	// Cache miss - query database
 	result := s.db.Where("sector = ?", sector).Find(&companyInfo)
 	if result.Error != nil {
 		return nil, fmt.Errorf("failed to fetch company info by sector: %w", result.Error)
 	}
+
+	// Store in cache
+	_ = s.cache.SetJSON(cacheKey, companyInfo, s.ttl.CompanyInfo)
 
 	return companyInfo, nil
 }
@@ -105,11 +174,23 @@ func (s *CompanyInfoService) GetCompanyInfoByIndustry(industry string) ([]model.
 		return []model.CompanyInfo{}, nil
 	}
 
+	// Try to get from cache
+	cacheKey := caching.GenerateKeyFromPath(fmt.Sprintf("company-info/industry/%s", industry))
 	var companyInfo []model.CompanyInfo
+	
+	found, err := s.cache.GetJSON(cacheKey, &companyInfo)
+	if err == nil && found {
+		return companyInfo, nil
+	}
+
+	// Cache miss - query database
 	result := s.db.Where("industry = ?", industry).Find(&companyInfo)
 	if result.Error != nil {
 		return nil, fmt.Errorf("failed to fetch company info by industry: %w", result.Error)
 	}
+
+	// Store in cache
+	_ = s.cache.SetJSON(cacheKey, companyInfo, s.ttl.CompanyInfo)
 
 	return companyInfo, nil
 }

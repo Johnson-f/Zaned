@@ -1,6 +1,7 @@
 package filtering
 
 import (
+	"screener/backend/service/caching"
 	filteringservice "screener/backend/service/filtering"
 	"time"
 
@@ -19,6 +20,9 @@ func SetupInsideDayRoutes(router fiber.Router) {
 				"message": err.Error(),
 			})
 		}
+		// Invalidate screener results cache
+		invalidator := caching.NewInvalidationService()
+		_ = invalidator.InvalidateScreenerResults("inside_day")
 		return c.JSON(fiber.Map{
 			"success":     true,
 			"message":     "Inside day results saved successfully",

@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"screener/backend/database"
 	"screener/backend/model"
+	"screener/backend/service/caching"
 
 	"gorm.io/gorm"
 )
 
 // ScreenerService contains business logic for screener operations
 type ScreenerService struct {
-	db *gorm.DB
+	db    *gorm.DB
+	cache *caching.CacheService
+	ttl   *caching.CacheTTLConfig
 }
 
 // FilterOptions represents filtering options for screener queries
@@ -54,18 +57,28 @@ type QueryResult struct {
 // NewScreenerService creates a new instance of ScreenerService
 func NewScreenerService() *ScreenerService {
 	return &ScreenerService{
-		db: database.GetDB(),
+		db:    database.GetDB(),
+		cache: caching.NewCacheService(),
+		ttl:   caching.GetTTLConfig(),
 	}
 }
 
 // GetAllScreeners fetches all screener records (read-only)
 func (s *ScreenerService) GetAllScreeners() ([]model.Screener, error) {
+	cacheKey := caching.GenerateKeyFromPath("screener")
 	var screeners []model.Screener
+	
+	found, err := s.cache.GetJSON(cacheKey, &screeners)
+	if err == nil && found {
+		return screeners, nil
+	}
+
 	result := s.db.Find(&screeners)
 	if result.Error != nil {
 		return nil, result.Error
 	}
 
+	_ = s.cache.SetJSON(cacheKey, screeners, s.ttl.Screener)
 	return screeners, nil
 }
 
@@ -85,7 +98,14 @@ func (s *ScreenerService) GetScreenerByID(id string) (*model.Screener, error) {
 
 // GetScreenerBySymbol fetches a screener record by symbol
 func (s *ScreenerService) GetScreenerBySymbol(symbol string) (*model.Screener, error) {
+	cacheKey := caching.GenerateKeyFromPath(fmt.Sprintf("screener/symbol/%s", symbol))
 	var screener model.Screener
+	
+	found, err := s.cache.GetJSON(cacheKey, &screener)
+	if err == nil && found {
+		return &screener, nil
+	}
+
 	result := s.db.Where("symbol = ?", symbol).First(&screener)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -94,6 +114,7 @@ func (s *ScreenerService) GetScreenerBySymbol(symbol string) (*model.Screener, e
 		return nil, result.Error
 	}
 
+	_ = s.cache.SetJSON(cacheKey, screener, s.ttl.Screener)
 	return &screener, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"screener/backend/database"
 	"screener/backend/model"
+	"screener/backend/service/caching"
 	"screener/backend/service/filtering"
 	"time"
 
@@ -14,13 +15,17 @@ import (
 
 // HistoricalService contains business logic for historical price operations
 type HistoricalService struct {
-	db *gorm.DB
+	db    *gorm.DB
+	cache *caching.CacheService
+	ttl   *caching.CacheTTLConfig
 }
 
 // NewHistoricalService creates a new instance of HistoricalService
 func NewHistoricalService() *HistoricalService {
 	return &HistoricalService{
-		db: database.GetDB(),
+		db:    database.GetDB(),
+		cache: caching.NewCacheService(),
+		ttl:   caching.GetTTLConfig(),
 	}
 }
 
@@ -198,6 +203,18 @@ func (s *HistoricalService) SaveHighVolumeEverResults() error {
 
 // GetScreenerResults fetches screener results with time period filtering
 func (s *HistoricalService) GetScreenerResults(resultType string, period string) ([]string, error) {
+	// Try to get from cache
+	cacheKey := caching.GenerateKey("screener-results", map[string]string{
+		"type":   resultType,
+		"period": period,
+	})
+	var symbols []string
+	
+	found, err := s.cache.GetJSON(cacheKey, &symbols)
+	if err == nil && found {
+		return symbols, nil
+	}
+
 	query := s.db.Model(&model.ScreenerResult{}).
 		Where("type = ?", resultType)
 
@@ -225,10 +242,12 @@ func (s *HistoricalService) GetScreenerResults(resultType string, period string)
 	}
 
 	// Get distinct symbols
-	var symbols []string
 	if err := query.Distinct("symbol").Pluck("symbol", &symbols).Error; err != nil {
 		return nil, fmt.Errorf("failed to fetch screener results: %w", err)
 	}
+
+	// Store in cache
+	_ = s.cache.SetJSON(cacheKey, symbols, s.ttl.ScreenerResults)
 
 	return symbols, nil
 }

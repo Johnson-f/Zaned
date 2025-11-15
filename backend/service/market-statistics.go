@@ -10,6 +10,7 @@ import (
 
 	"screener/backend/database"
 	"screener/backend/model"
+	"screener/backend/service/caching"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -44,6 +45,8 @@ func getGlobalAggregator() *DailyAggregator {
 type MarketStatisticsService struct {
 	db         *gorm.DB
 	aggregator *DailyAggregator
+	cache      *caching.CacheService
+	ttl        *caching.CacheTTLConfig
 }
 
 // NewMarketStatisticsService constructs a new MarketStatisticsService
@@ -52,6 +55,8 @@ func NewMarketStatisticsService() *MarketStatisticsService {
 	return &MarketStatisticsService{
 		db:         database.GetDB(),
 		aggregator: getGlobalAggregator(),
+		cache:      caching.NewCacheService(),
+		ttl:        caching.GetTTLConfig(),
 	}
 }
 
@@ -176,9 +181,24 @@ func (s *MarketStatisticsService) StoreEndOfDayStats(ctx context.Context) error 
 
 // GetHistoricalStats fetches market statistics for charting
 func (s *MarketStatisticsService) GetHistoricalStats(ctx context.Context, startDate, endDate time.Time) ([]model.MarketStatistics, error) {
+	cacheKey := caching.GenerateKey("market-statistics", map[string]string{
+		"startDate": startDate.Format("2006-01-02"),
+		"endDate":   endDate.Format("2006-01-02"),
+	})
 	var stats []model.MarketStatistics
-	err := s.db.Where("date >= ? AND date <= ?", startDate, endDate).
+	
+	found, err := s.cache.GetJSON(cacheKey, &stats)
+	if err == nil && found {
+		return stats, nil
+	}
+
+	err = s.db.Where("date >= ? AND date <= ?", startDate, endDate).
 		Order("date ASC").
 		Find(&stats).Error
+	if err != nil {
+		return nil, err
+	}
+	
+	_ = s.cache.SetJSON(cacheKey, stats, s.ttl.MarketStatistics)
 	return stats, err
 }

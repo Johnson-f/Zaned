@@ -6,6 +6,7 @@ import (
 	"screener/backend/model"
 	"screener/backend/routes/filtering"
 	"screener/backend/service"
+	"screener/backend/service/caching"
 	indicatorsscreening "screener/backend/service/filtering/indicators/screening"
 	"screener/backend/supabase"
 	"strconv"
@@ -77,6 +78,10 @@ func SetupRoutes(app *fiber.App) {
 				})
 			}
 
+			// Invalidate symbols cache since screener table may have been updated
+			invalidator := caching.NewInvalidationService()
+			_ = invalidator.InvalidateSymbols()
+
 			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
 				"success":     true,
 				"job_id":      jobID,
@@ -121,6 +126,10 @@ func SetupRoutes(app *fiber.App) {
 				})
 			}
 
+			// Invalidate company info cache after ingestion
+			invalidator := caching.NewInvalidationService()
+			_ = invalidator.InvalidateAllCompanyInfo()
+
 			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
 				"success":     true,
 				"job_id":      jobID,
@@ -143,6 +152,10 @@ func SetupRoutes(app *fiber.App) {
 				})
 			}
 
+			// Invalidate fundamental data cache after ingestion
+			invalidator := caching.NewInvalidationService()
+			_ = invalidator.InvalidateAllFundamentalData()
+
 			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
 				"success":     true,
 				"job_id":      jobID,
@@ -163,6 +176,10 @@ func SetupRoutes(app *fiber.App) {
 				if err != nil {
 					// Log error but don't block the response
 					fmt.Printf("Market aggregation error: %v\n", err)
+				} else {
+					// Invalidate market statistics cache after aggregation
+					invalidator := caching.NewInvalidationService()
+					_ = invalidator.InvalidateMarketStatistics()
 				}
 			}()
 
@@ -188,6 +205,10 @@ func SetupRoutes(app *fiber.App) {
 					"message": err.Error(),
 				})
 			}
+
+			// Invalidate market statistics cache after storing EOD stats
+			invalidator := caching.NewInvalidationService()
+			_ = invalidator.InvalidateMarketStatistics()
 
 			return c.JSON(fiber.Map{
 				"success":     true,

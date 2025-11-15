@@ -7,6 +7,7 @@ import (
 	"screener/backend/database"
 	"screener/backend/model"
 	"screener/backend/routes"
+	"screener/backend/service/caching"
 	"screener/backend/supabase"
 	"strings"
 	"syscall"
@@ -28,6 +29,13 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	log.Println("Database connection established")
+
+	// Initialize Redis cache connection
+	if err := caching.InitRedis(); err != nil {
+		log.Printf("Warning: Failed to initialize Redis cache: %v. Continuing without cache.", err)
+	} else {
+		log.Println("Redis cache connection established")
+	}
 
 	// Run database migrations
 	if err := database.Migrate(&model.Screener{}, &model.Historical{}, &model.Watchlist{}, &model.WatchlistItem{}, &model.CompanyInfo{}, &model.FundamentalData{}, &model.MarketStatistics{}, &model.ScreenerResult{}); err != nil {
@@ -118,6 +126,11 @@ func main() {
 	// Gracefully shutdown the server
 	if err := app.Shutdown(); err != nil {
 		log.Printf("Error during shutdown: %v", err)
+	}
+
+	// Close Redis connection
+	if err := caching.CloseRedis(); err != nil {
+		log.Printf("Error closing Redis connection: %v", err)
 	}
 
 	log.Println("Server stopped")

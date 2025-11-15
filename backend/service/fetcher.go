@@ -16,6 +16,7 @@ import (
 
 	"screener/backend/database"
 	"screener/backend/model"
+	"screener/backend/service/caching"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -27,6 +28,8 @@ type FetcherService struct {
 	httpClient  *http.Client
 	baseURL     string
 	histService *HistoricalService
+	cache       *caching.CacheService
+	ttl         *caching.CacheTTLConfig
 }
 
 // getBaseURLs returns primary and fallback base URLs for failover
@@ -129,7 +132,32 @@ func NewFetcherService() *FetcherService {
 		httpClient:  &http.Client{Timeout: timeout},
 		baseURL:     primaryBase,
 		histService: NewHistoricalService(),
+		cache:       caching.NewCacheService(),
+		ttl:         caching.GetTTLConfig(),
 	}
+}
+
+// getAllSymbols retrieves all unique symbols from screener table with caching
+// This reduces database egress costs when processing 8,000+ symbols
+func (s *FetcherService) getAllSymbols() ([]string, error) {
+	cacheKey := caching.GenerateKeyFromPath("screener/symbols")
+	var symbols []string
+
+	// Try to get from cache
+	found, err := s.cache.GetJSON(cacheKey, &symbols)
+	if err == nil && found {
+		return symbols, nil
+	}
+
+	// Cache miss - query database
+	if err := s.db.Model(&model.Screener{}).Distinct("symbol").Pluck("symbol", &symbols).Error; err != nil {
+		return nil, fmt.Errorf("failed to load screener symbols: %w", err)
+	}
+
+	// Store in cache
+	_ = s.cache.SetJSON(cacheKey, symbols, s.ttl.Symbols)
+
+	return symbols, nil
 }
 
 // RunIngestion fetches and stores data for all symbols concurrently. Suitable for cron trigger.
@@ -138,10 +166,10 @@ func (s *FetcherService) RunIngestion(ctx context.Context, concurrency int) (str
 		concurrency = 8
 	}
 
-	// Load all symbols from screener table
-	var symbols []string
-	if err := s.db.Model(&model.Screener{}).Distinct("symbol").Pluck("symbol", &symbols).Error; err != nil {
-		return "", fmt.Errorf("failed to load screener symbols: %w", err)
+	// Load all symbols from screener table (with caching)
+	symbols, err := s.getAllSymbols()
+	if err != nil {
+		return "", err
 	}
 	if len(symbols) == 0 {
 		return fmt.Sprintf("job-%d", time.Now().UnixNano()), nil
@@ -574,10 +602,10 @@ type detailedQuote struct {
 // RunCompanyInfoIngestion fetches company info for all symbols from screener table and upserts them.
 // It avoids duplicate data by using ON CONFLICT (upsert) based on symbol primary key.
 func (s *FetcherService) RunCompanyInfoIngestion(ctx context.Context) (string, error) {
-	// Get all unique symbols from screener table
-	var symbols []string
-	if err := s.db.Model(&model.Screener{}).Distinct("symbol").Pluck("symbol", &symbols).Error; err != nil {
-		return "", fmt.Errorf("failed to load screener symbols: %w", err)
+	// Get all unique symbols from screener table (with caching)
+	symbols, err := s.getAllSymbols()
+	if err != nil {
+		return "", err
 	}
 
 	if len(symbols) == 0 {
@@ -628,11 +656,11 @@ func (s *FetcherService) RunMarketAggregation(ctx context.Context) (string, erro
 
 	fmt.Printf("[%s] Starting market aggregation...\n", jobID)
 
-	// Get all unique symbols from screener table
-	var symbols []string
-	if err := s.db.Model(&model.Screener{}).Distinct("symbol").Pluck("symbol", &symbols).Error; err != nil {
+	// Get all unique symbols from screener table (with caching)
+	symbols, err := s.getAllSymbols()
+	if err != nil {
 		fmt.Printf("[%s] ERROR: Failed to load screener symbols: %v\n", jobID, err)
-		return "", fmt.Errorf("failed to load screener symbols: %w", err)
+		return "", err
 	}
 
 	totalSymbols := len(symbols)
@@ -874,10 +902,10 @@ type financialsResponse struct {
 // It fetches all three statement types and both annual and quarterly frequencies.
 // It avoids duplicate data by using ON CONFLICT (upsert) based on unique constraint (symbol, statement_type, frequency).
 func (s *FetcherService) RunFundamentalDataIngestion(ctx context.Context) (string, error) {
-	// Get all unique symbols from screener table
-	var symbols []string
-	if err := s.db.Model(&model.Screener{}).Distinct("symbol").Pluck("symbol", &symbols).Error; err != nil {
-		return "", fmt.Errorf("failed to load screener symbols: %w", err)
+	// Get all unique symbols from screener table (with caching)
+	symbols, err := s.getAllSymbols()
+	if err != nil {
+		return "", err
 	}
 
 	if len(symbols) == 0 {
