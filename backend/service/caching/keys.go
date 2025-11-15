@@ -89,4 +89,3 @@ func GeneratePattern(endpoint string) string {
 	endpoint = strings.Trim(endpoint, "/")
 	return fmt.Sprintf("%s:%s:*", cachePrefix, endpoint)
 }
-

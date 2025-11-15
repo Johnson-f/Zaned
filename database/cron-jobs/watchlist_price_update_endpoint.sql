@@ -1,6 +1,14 @@
 -- Cron job that calls the https://zaned-backennd.onrender.com/api/admin/watchlist/update-prices endpoint
-
--- Actually job
+--
+-- Purpose: Updates price data for all unique stocks in user watchlists. Fetches current prices,
+--          after-hours prices, change amounts, and percent changes for all symbols in the
+--          watchlist_items table and updates the corresponding records. This ensures users
+--          see up-to-date pricing information for stocks they're tracking.
+--
+-- Schedule: Runs every 15 minutes, Monday to Friday, between 3PM-10PM WAT (15-22 UTC)
+--           (*/15 15-22 * * 1-5)
+--
+-- Actual job
 SELECT cron.schedule(
   'watchlist-price-update-15m',
   '*/15 15-22 * * 1-5',
