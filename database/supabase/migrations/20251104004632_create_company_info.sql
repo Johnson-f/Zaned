@@ -78,3 +78,21 @@ CREATE TRIGGER update_company_info_updated_at
 -- Enable real-time subscription for company_info table
 -- ALTER PUBLICATION supabase_realtime ADD TABLE company_info;
 
+
+-- Policy for the screener_result table
+-- Enable Row Level Security (RLS) on the table
+ALTER TABLE screener_result ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for screener_result table
+-- Only allow SELECT operations (read-only for all users)
+-- INSERT, UPDATE, and DELETE are automatically blocked by RLS (no policies = blocked)
+
+-- Drop existing policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "Allow select on screener result" ON screener_result;
+
+-- Policy: All users can view screener result (read-only access)
+-- No policies for INSERT/UPDATE/DELETE means they are automatically blocked
+CREATE POLICY "Allow select on screener result"
+    ON screener_result
+    FOR SELECT
+    USING (true);

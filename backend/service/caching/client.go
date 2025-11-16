@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -61,12 +62,38 @@ func InitRedis() error {
 	ctx, cancel := context.WithTimeout(redisCtx, 5*time.Second)
 	defer cancel()
 
-	_, err := redisClient.Ping(ctx).Result()
+	pingResult, err := redisClient.Ping(ctx).Result()
 	if err != nil {
 		return fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 
-	log.Println("Redis connection established successfully")
+	// Get Redis server info for verification
+	info, err := redisClient.Info(ctx, "server").Result()
+	redisVersion := "unknown"
+	if err == nil {
+		// Extract version from info string
+		// Redis info format: redis_version:7.0.0\r\n...
+		lines := strings.Split(info, "\n")
+		for _, line := range lines {
+			if strings.HasPrefix(line, "redis_version:") {
+				parts := strings.Split(line, ":")
+				if len(parts) >= 2 {
+					redisVersion = strings.TrimSpace(strings.TrimRight(parts[1], "\r"))
+					break
+				}
+			}
+		}
+	}
+
+	// Get database size
+	dbSize, _ := redisClient.DBSize(ctx).Result()
+
+	log.Printf("✅ Redis connection established successfully")
+	log.Printf("   Address: %s", opts.Addr)
+	log.Printf("   Ping: %s", pingResult)
+	log.Printf("   Version: %s", redisVersion)
+	log.Printf("   Database: %d (keys: %d)", opts.DB, dbSize)
+	log.Printf("   Pool Size: %d, Min Idle: %d", opts.PoolSize, opts.MinIdleConns)
 	return nil
 }
 

@@ -32,25 +32,42 @@ func main() {
 
 	// Initialize Redis cache connection
 	var persister *caching.Persister
+	log.Println("🔌 Initializing Redis cache connection...")
 	if err := caching.InitRedis(); err != nil {
-		log.Printf("Warning: Failed to initialize Redis cache: %v. Continuing without cache.", err)
+		log.Printf("❌ Warning: Failed to initialize Redis cache: %v. Continuing without cache.", err)
+		log.Println("   The server will fall back to database-only mode.")
 	} else {
-		log.Println("Redis cache connection established")
-
+		log.Println("📦 Loading symbols into Redis cache...")
 		// Load all symbols into Redis cache on startup
 		symbolCache := caching.NewSymbolCache()
 		if err := symbolCache.LoadAllSymbols(); err != nil {
-			log.Printf("Warning: Failed to load symbols into cache: %v. Continuing without symbol cache.", err)
+			log.Printf("⚠️  Warning: Failed to load symbols into cache: %v. Continuing without symbol cache.", err)
 		} else {
-			log.Println("Symbols loaded into Redis cache")
+			// Verify symbols were loaded by checking cache
+			symbols, err := symbolCache.GetAllSymbols()
+			if err == nil && len(symbols) > 0 {
+				log.Printf("✅ Successfully loaded %d symbols into Redis cache", len(symbols))
+			} else {
+				log.Printf("⚠️  Warning: Symbols may not be cached properly")
+			}
 		}
 
 		// Start background persistence worker
+		log.Println("🔄 Starting background persistence worker...")
 		persister = caching.NewPersister()
 		if err := persister.Start(); err != nil {
-			log.Printf("Warning: Failed to start persistence worker: %v. Continuing without persistence worker.", err)
+			log.Printf("⚠️  Warning: Failed to start persistence worker: %v. Continuing without persistence worker.", err)
 		} else {
-			log.Println("Background persistence worker started")
+			nextRun := persister.GetNextRunTime()
+			log.Printf("✅ Background persistence worker started")
+			log.Printf("   Next persistence run: %s", nextRun.Format("2006-01-02 15:04:05 MST"))
+		}
+
+		// Log cache statistics
+		if stats, err := caching.GetCacheStats(); err == nil {
+			log.Printf("📊 Redis Cache Statistics:")
+			log.Printf("   Total Keys: %d", stats.TotalKeys)
+			log.Printf("   Memory Usage: %s", stats.MemoryUsage)
 		}
 	}
 
